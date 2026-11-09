@@ -212,3 +212,12 @@ tr.total td { font-weight: 700; border-top: 2px solid var(--ink); }
 .finsel { flex-wrap: wrap; }
 .fininfo { flex-basis: 100%; display: flex; gap: .9rem; flex-wrap: wrap; margin: .1rem 0 .4rem 1.6rem; align-items: center; }
 .fininfo select, .fininfo input { padding: .25rem .4rem; font-size: .85rem; }
+
+/* accounts */
+.pos { color: #14866d; font-weight: 600; } .neg { color: #b4541a; font-weight: 600; }
+.tablewrap input[type=number], .tablewrap input[type=text] { padding: .3rem .4rem; }
+.toolbar input[type=date] { width: auto; }
+.sheet table { font-size: .82rem; } .sheet th, .sheet td { padding: .35rem .4rem; }
+.sheet img.co-logo { display: block; margin: 0 auto .35rem; max-height: 72px; max-width: 260px; object-fit: contain; }
+.print-only img.co-logo { display: block; margin: 0 auto .35rem; max-height: 64px; max-width: 240px; object-fit: contain; }
+.brand img.logo { width: 36px; height: 36px; border-radius: 9px; padding: 2px; }

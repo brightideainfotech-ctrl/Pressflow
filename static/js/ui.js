@@ -1,6 +1,8 @@
 // Small DOM helpers. Everything is built with textContent/createElement, never innerHTML,
 // so data from the database can never be interpreted as markup.
 
+import { state } from "./api.js";
+
 export function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
   let value;
@@ -159,3 +161,15 @@ export function formModal({ title, fields, values = {}, submitText = "Save", onS
 }
 
 export function emptyState(text) { return h("div", { class: "empty" }, text); }
+
+// The company logo (a data URL saved in Settings), or null when none is set. Used on every printed sheet.
+export function logoImg(cls = "co-logo") {
+  const src = state.settings && state.settings.company_logo;
+  return src ? h("img", { class: cls, src, alt: (state.settings.company_name || "Company") + " logo" }) : null;
+}
+// A heading that only appears on paper (statements, reports).
+export function printHeader() {
+  const s = state.settings || {};
+  return h("div", { class: "print-only", style: { textAlign: "center", marginBottom: ".6rem" } }, logoImg(), h("div", { style: { fontWeight: 700, fontSize: "1.2rem" } }, s.company_name || ""),
+    h("div", { class: "small" }, [s.company_address, s.company_phone, s.company_gstin && `GSTIN ${s.company_gstin}`].filter(Boolean).join(" · ")));
+}

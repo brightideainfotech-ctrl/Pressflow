@@ -10,7 +10,7 @@ Replaces the paper work order (St. Joseph's Orphanage Press form, 2026-27) with:
 4. **Inventory**: paper reels (kg), sheets, plates, ink and other stock, with receipts, issues to jobs, recounts, history and low-stock warnings. Jobs show the paper they need against what has been issued.
 5. **Printable work order** laid out like the paper form (customer, paper, plates, machine and binding tick boxes, advance, receipt and bill numbers, signatures).
 
-The interface follows the PrintFlow demo: navy sidebar (Overview, Estimates & quotes, Production jobs, Production line, Team monitor, Inventory, then Customers, Rate master, Settings, Users), stat tiles, a stage-by-stage Production line board, and a login page in the same style. Operators land on the Production line.
+The interface follows the PrintFlow demo: navy sidebar (Overview, Estimates & quotes, Production jobs, Production line, Team monitor, Items & stock, the Accounts group (Parties, Sales, Purchases, Payments, Reports), then Customers, Rate master, Settings, Users), stat tiles, a stage-by-stage Production line board, and a login page in the same style. Operators land on the Production line.
 
 No installs needed: Python 3.11+ standard library only, SQLite database, plain JavaScript front end.
 
@@ -86,3 +86,19 @@ tests/               estimator and API tests
 - Put it behind HTTPS if it is reachable outside the press office network.
 - Change the admin password and create a login for each person.
 - Set company address, phone and GSTIN in **Settings** (printed on quotations).
+
+
+## Basic accounting
+
+Parties (customers and suppliers, with opening balances and state), items with HSN/GST/prices (the same list as the stock page),
+sales invoices, purchase bills, payments, and reports. Sales invoices take stock out and purchase bills add it. A job can be
+turned into an invoice from its page ("Create invoice"). GST is CGST+SGST when the party's state equals the press's state
+(Settings), otherwise IGST. Invoices cannot be edited: cancel (stock is put back) and create again. A bill with payments must have
+the payments deleted first.
+
+Reports: sales and purchase registers, customers owe you / you owe suppliers (with ageing), stock summary and value, GST summary
+with HSN, profit and loss (an estimate: stock is valued at each item's latest buying price), daybook, and party statements.
+Set your logo in Settings; it is printed on quotations, work orders, invoices, statements and reports.
+
+Limits: no double-entry ledger, bank reconciliation, credit/debit notes, TDS or e-invoicing. Have your accountant check the GST
+figures before filing.

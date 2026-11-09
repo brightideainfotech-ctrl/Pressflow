@@ -137,6 +137,31 @@ def seed(db_path: str | None = None) -> None:
         item(name="Matt lamination film", category="binding", unit="rolls", reorder_level=2, opening_qty=6)
         call("POST", f"/api/stock/{reel_item['id']}/move", dict(kind="issue", qty=65, job_id=j4["id"], note="First batch to press"))
         call("POST", f"/api/stock/{ink['id']}/move", dict(kind="issue", qty=14, note="Month usage"))
+
+        # Accounts: company state, item prices, a supplier, purchase bills, a job invoice and payments.
+        call("PUT", "/api/settings", dict(company_state_code="32", company_gstin="32ABCDE1234F1Z5",
+                                           company_address="Kochi, Kerala", company_phone="0484 000000"))
+        art = conn.execute("SELECT id FROM stock_items WHERE name LIKE 'Art Paper 130%'").fetchone()["id"]
+        for iid, hsn, gst, buy, sell in ((art, "4810", 12, 4.2, 5.5), (ink["id"], "3215", 18, 420, 520)):
+            call("PUT", f"/api/stock/{iid}", dict(hsn=hsn, gst_rate=gst, purchase_price=buy, sale_price=sell))
+        call("POST", "/api/stock", dict(name="Design charges", category="service", unit="job", hsn="9983", gst_rate=18,
+                                        sale_price=1500, track_stock=False))
+        supplier = call("POST", "/api/parties", dict(name="Sri Lakshmi Paper Mart", party_type="supplier", phone1="9847000001",
+                                                     gstin="32AAACS1234K1Z9", state_code="32", address="Ernakulam"))
+        far = call("POST", "/api/parties", dict(name="Sivakasi Ink Works", party_type="supplier", state_code="33", gstin="33AAACS9999K1Z1"))
+        call("POST", "/api/purchases", dict(party_id=supplier["id"], inv_date=_days(-12), party_ref="SLP/1182", paid_now=dict(amount=10000, mode="upi"),
+              lines=[dict(item_id=art, description="Art Paper 130 gsm 23x36", hsn="4810", qty=2500, unit="sheets", rate=4.2, gst_rate=12)]))
+        call("POST", "/api/purchases", dict(party_id=far["id"], inv_date=_days(-5), party_ref="SIW-559",
+              lines=[dict(item_id=ink["id"], description="Black ink", hsn="3215", qty=10, unit="kg", rate=420, gst_rate=18)]))
+        call("POST", "/api/purchases", dict(party_id=supplier["id"], inv_date=_days(-3), party_ref="Rent Oct",
+              lines=[dict(description="Shop rent", qty=1, unit="month", rate=12000, gst_rate=0)], paid_now=dict(amount=12000, mode="bank")))
+        draft = call("GET", f"/api/jobs/{j1['id']}/invoice-draft")
+        inv = call("POST", "/api/sales", dict(party_id=draft["party_id"], job_id=draft["job_id"], inv_date=_days(-4), due_date=_days(10),
+                   notes=draft["notes"], lines=draft["lines"], paid_now=dict(amount=draft["advance"] or 5000, mode="cash")))
+        call("POST", "/api/sales", dict(party_id=customers[1]["id"], inv_date=_days(-2), due_date=_days(13),
+              lines=[dict(item_id=art, description="Art Paper 130 gsm 23x36", hsn="4810", qty=300, unit="sheets", rate=5.5, gst_rate=12),
+                     dict(description="Design charges", hsn="9983", qty=1, unit="job", rate=1500, gst_rate=18)]))
+        call("POST", "/api/payments", dict(kind="in", party_id=customers[2]["id"], amount=2500, pay_date=_days(-1), mode="upi", note="Advance"))
     finally:
         conn.close()
 

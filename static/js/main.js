@@ -4,6 +4,9 @@ import { renderQuoteList, renderQuoteEditor, renderQuoteView } from "./quotes.js
 import { renderJobs, renderJobView, progressBar } from "./jobs.js";
 import { renderInventory } from "./inventory.js";
 import { renderMonitor } from "./monitor.js";
+import { renderParties, renderPartyStatement } from "./parties.js";
+import { renderInvoiceList, renderInvoiceEditor, renderInvoiceView, renderPayments } from "./invoices.js";
+import { renderReports } from "./reports.js";
 import { renderCustomers, renderRates, renderUsers, renderSettings } from "./masters.js";
 
 const app = document.getElementById("app");
@@ -17,7 +20,13 @@ const NAV = [
   ["Production jobs", "#/jobs", "jobs", null, "▤"],
   ["Production line", "#/line", "line", null, "⇢"],
   ["Team monitor", "#/monitor", "monitor", ["manager"], "◉"],
-  ["Inventory", "#/stock", "stock", ["manager", "desk", "superintendent", "operator"], "▥"],
+  ["Items & stock", "#/stock", "stock", ["manager", "desk", "superintendent", "operator"], "▥"],
+  ["ACCOUNTS"],
+  ["Parties", "#/parties", "parties", OFFICE, "☺"],
+  ["Sales", "#/sales", "sales", OFFICE, "↗"],
+  ["Purchases", "#/purchases", "purchases", OFFICE, "↙"],
+  ["Payments", "#/payments", "payments", OFFICE, "⇄"],
+  ["Reports", "#/reports", "reports", OFFICE, "≣"],
   ["MASTER DATA"],
   ["Customers", "#/customers", "customers", OFFICE, "♙"],
   ["Rate master", "#/rates", "rates", ["manager"], "▧"],
@@ -35,6 +44,16 @@ const ROUTES = [
   { rx: /^\/jobs\/(\d+)$/, fn: (v, id) => renderJobView(v, Number(id)), nav: "jobs" },
   { rx: /^\/monitor$/, fn: renderMonitor, nav: "monitor", roles: ["manager"] },
   { rx: /^\/stock$/, fn: renderInventory, nav: "stock" },
+  { rx: /^\/parties$/, fn: renderParties, nav: "parties", roles: OFFICE },
+  { rx: /^\/parties\/(\d+)$/, fn: (v, id) => renderPartyStatement(v, Number(id)), nav: "parties", roles: OFFICE },
+  { rx: /^\/sales$/, fn: (v) => renderInvoiceList(v, "sale"), nav: "sales", roles: OFFICE },
+  { rx: /^\/sales\/new$/, fn: (v) => renderInvoiceEditor(v, "sale"), nav: "sales", roles: OFFICE },
+  { rx: /^\/sales\/(\d+)$/, fn: (v, id) => renderInvoiceView(v, "sale", Number(id)), nav: "sales", roles: OFFICE },
+  { rx: /^\/purchases$/, fn: (v) => renderInvoiceList(v, "purchase"), nav: "purchases", roles: OFFICE },
+  { rx: /^\/purchases\/new$/, fn: (v) => renderInvoiceEditor(v, "purchase"), nav: "purchases", roles: OFFICE },
+  { rx: /^\/purchases\/(\d+)$/, fn: (v, id) => renderInvoiceView(v, "purchase", Number(id)), nav: "purchases", roles: OFFICE },
+  { rx: /^\/payments$/, fn: renderPayments, nav: "payments", roles: OFFICE },
+  { rx: /^\/reports$/, fn: renderReports, nav: "reports", roles: OFFICE },
   { rx: /^\/customers$/, fn: renderCustomers, nav: "customers", roles: OFFICE },
   { rx: /^\/rates$/, fn: renderRates, nav: "rates", roles: ["manager"] },
   { rx: /^\/settings$/, fn: renderSettings, nav: "settings", roles: ["manager"] },
@@ -95,7 +114,7 @@ function buildShell() {
   content = h("div", { class: "content" });
   add(app, h("div", { class: "layout" },
     h("aside", { class: "sidebar no-print" },
-      h("a", { class: "brand", href: "#/" }, h("div", { class: "logo" }, company[0].toUpperCase()), h("div", null, h("b", null, company), h("small", null, "PRINT PRODUCTION OS"))),
+      h("a", { class: "brand", href: "#/" }, (state.settings.company_logo ? h("img", { class: "logo", src: state.settings.company_logo, alt: "", style: { objectFit: "contain", background: "#fff" } }) : h("div", { class: "logo" }, company[0].toUpperCase())), h("div", null, h("b", null, company), h("small", null, "PRINT PRODUCTION OS"))),
       nav,
       h("div", { class: "sidebarfoot" }, "Quotations, work orders and", h("br"), "production tracking")),
     h("div", { class: "mainwrap" },
@@ -209,6 +228,11 @@ async function renderDashboard(view) {
       stat("Balance on ready/delivered", money0(d.balance_due), "Collect on delivery", false, null, "#14866d"),
     );
   }
+  if (office && d.accounts) stats.push(
+    stat("To receive", money0(d.accounts.receivable), "From customers", false, "#/reports?tab=receivable", "#14866d"),
+    stat("To pay", money0(d.accounts.payable), "To suppliers", false, "#/reports?tab=payable", "#e0a526"),
+    stat("Sales this month", money0(d.accounts.sales_month), "Invoiced incl. GST", false, "#/sales", "#8ca5ff"),
+    stat("Purchases this month", money0(d.accounts.purchases_month), "Billed incl. GST", false, "#/purchases", "#a58bf0"));
   if (isManager()) stats.push(stat("Not assigned", num(d.unassigned), d.unassigned ? "Give these to someone" : "Everything has an owner", d.unassigned > 0, "#/monitor", "#a58bf0"));
   if (d.low_stock) stats.push(stat("Low stock", num(d.low_stock.length), d.low_stock.length ? d.low_stock.slice(0, 2).map((x) => x.name).join(", ") : "All above warning level", d.low_stock.length > 0, "#/stock", "#c24141"));
   add(view, h("div", { class: "stats" }, stats));

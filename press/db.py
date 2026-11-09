@@ -213,6 +213,67 @@ CREATE TABLE IF NOT EXISTS stock_moves(
 );
 CREATE INDEX IF NOT EXISTS idx_moves_item ON stock_moves(item_id);
 CREATE INDEX IF NOT EXISTS idx_moves_job ON stock_moves(job_id);
+CREATE TABLE IF NOT EXISTS invoices(
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN ('sale','purchase')),
+  number TEXT NOT NULL UNIQUE,
+  party_ref TEXT NOT NULL DEFAULT '',
+  party_id INTEGER NOT NULL REFERENCES customers(id),
+  inv_date TEXT NOT NULL,
+  due_date TEXT NOT NULL DEFAULT '',
+  place_of_supply TEXT NOT NULL DEFAULT '',
+  intra INTEGER NOT NULL DEFAULT 1,
+  taxable REAL NOT NULL DEFAULT 0,
+  cgst REAL NOT NULL DEFAULT 0,
+  sgst REAL NOT NULL DEFAULT 0,
+  igst REAL NOT NULL DEFAULT 0,
+  round_off REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',
+  job_id INTEGER REFERENCES jobs(id),
+  notes TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  cancelled_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_inv_party ON invoices(party_id);
+CREATE INDEX IF NOT EXISTS idx_inv_kind_date ON invoices(kind, inv_date);
+
+CREATE TABLE IF NOT EXISTS invoice_lines(
+  id INTEGER PRIMARY KEY,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  item_id INTEGER REFERENCES stock_items(id),
+  description TEXT NOT NULL,
+  hsn TEXT NOT NULL DEFAULT '',
+  qty REAL NOT NULL,
+  unit TEXT NOT NULL DEFAULT '',
+  rate REAL NOT NULL,
+  disc_pct REAL NOT NULL DEFAULT 0,
+  gst_rate REAL NOT NULL DEFAULT 0,
+  taxable REAL NOT NULL DEFAULT 0,
+  cgst REAL NOT NULL DEFAULT 0,
+  sgst REAL NOT NULL DEFAULT 0,
+  igst REAL NOT NULL DEFAULT 0,
+  amount REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_lines_inv ON invoice_lines(invoice_id);
+
+CREATE TABLE IF NOT EXISTS payments(
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN ('in','out')),
+  number TEXT NOT NULL UNIQUE,
+  party_id INTEGER NOT NULL REFERENCES customers(id),
+  invoice_id INTEGER REFERENCES invoices(id),
+  pay_date TEXT NOT NULL,
+  amount REAL NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'cash',
+  ref TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pay_party ON payments(party_id);
+CREATE INDEX IF NOT EXISTS idx_pay_inv ON payments(invoice_id);
 """
 
 # Columns added after the first release: (table, column, definition)
@@ -224,6 +285,16 @@ MIGRATIONS = [
     ("jobs", "assigned_to", "INTEGER REFERENCES users(id)"),
     ("jobs", "assigned_at", "TEXT NOT NULL DEFAULT ''"),
     ("jobs", "progress_pct", "INTEGER NOT NULL DEFAULT 0"),
+    # accounting
+    ("customers", "party_type", "TEXT NOT NULL DEFAULT 'customer'"),
+    ("customers", "opening_balance", "REAL NOT NULL DEFAULT 0"),
+    ("customers", "state_code", "TEXT NOT NULL DEFAULT ''"),
+    ("stock_items", "hsn", "TEXT NOT NULL DEFAULT ''"),
+    ("stock_items", "gst_rate", "REAL NOT NULL DEFAULT 0"),
+    ("stock_items", "sale_price", "REAL NOT NULL DEFAULT 0"),
+    ("stock_items", "purchase_price", "REAL NOT NULL DEFAULT 0"),
+    ("stock_items", "track_stock", "INTEGER NOT NULL DEFAULT 1"),
+    ("stock_moves", "invoice_id", "INTEGER REFERENCES invoices(id)"),
 ]
 
 
@@ -239,6 +310,9 @@ DEFAULT_SETTINGS = {
     "company_phone": "",
     "company_email": "",
     "company_gstin": "",
+    "company_state_code": "",
+    "company_logo": "",
+    "invoice_terms": "Goods once sold will not be taken back. Subject to local jurisdiction.",
     "gst_pct": "12",
     "hsn_default": "",
     "default_margin_pct": "25",

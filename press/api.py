@@ -221,7 +221,7 @@ def change_password(c: Ctx):
 NUMERIC_SETTINGS = {"gst_pct": (0, 50), "default_margin_pct": (0, 1000), "wastage_pct": (0, 100),
                     "bleed_in": (0, 5), "gripper_in": (0, 10), "quote_valid_days": (1, 365)}
 TEXT_SETTINGS = ("company_name", "company_address", "company_phone", "company_email", "company_gstin",
-                 "hsn_default", "quote_terms")
+                 "hsn_default", "quote_terms", "company_state_code", "invoice_terms")
 FLAG_SETTINGS = ("round_to_rupee", "rates_confirmed")
 
 
@@ -248,6 +248,12 @@ def settings_put(c: Ctx):
             val = f"{x:g}"
         elif k in TEXT_SETTINGS:
             val = str(v).strip()[:2000]
+        elif k == "company_logo":
+            val = str(v or "").strip()
+            if val and not re.match(r"^data:image/(png|jpeg);base64,[A-Za-z0-9+/=]+$", val):
+                raise ApiError(422, "The logo must be a PNG or JPEG picture")
+            if len(val) > 400_000:
+                raise ApiError(422, "The logo is too large. Use a smaller picture (under about 250 KB)")
         elif k in FLAG_SETTINGS:
             val = "1" if v in (True, 1, "1", "true") else "0"
         else:
@@ -373,6 +379,8 @@ def _register_master(name, table, order, read_roles, write_roles, fields):
         sql = f"SELECT * FROM {table}"
         if not (c.query.get("all") == "1" and c.user["role"] in write_roles):
             sql += " WHERE active=1"
+        if table == "customers":  # suppliers live on the Parties page, not in the quotation customer list
+            sql += (" AND" if " WHERE" in sql else " WHERE") + " party_type<>'supplier'"
         return rows(c.conn, sql + f" ORDER BY {order} COLLATE NOCASE")
 
     @route("POST", f"/api/{name}", roles=write_roles)
@@ -906,10 +914,12 @@ def monitor(c: Ctx):
 
 # ---------------------------------------------------------------- inventory
 
-STOCK_CATEGORIES = "paper,ink,plates,chemicals,binding,other"
+STOCK_CATEGORIES = "paper,ink,plates,chemicals,binding,goods,service,other"
 STOCK_FIELDS = [("name", "str", True), ("category", "choice:" + STOCK_CATEGORIES, False, "paper"),
                 ("unit", "str", True), ("paper_id", "int", False), ("reorder_level", "float", False),
-                ("location", "str", False), ("notes", "str", False), ("active", "bool", False, 1)]
+                ("location", "str", False), ("notes", "str", False), ("active", "bool", False, 1),
+                ("hsn", "str", False), ("gst_rate", "float", False), ("sale_price", "float", False),
+                ("purchase_price", "float", False), ("track_stock", "bool", False, 1)]
 ON_HAND = "COALESCE((SELECT SUM(qty) FROM stock_moves m WHERE m.item_id=i.id),0)"
 
 
@@ -917,7 +927,7 @@ def _stock_row(conn, iid):
     r = need(one(conn, f"SELECT i.*, {ON_HAND} AS on_hand, p.name AS paper_name FROM stock_items i "
                        "LEFT JOIN papers p ON p.id=i.paper_id WHERE i.id=?", (iid,)), "Stock item")
     r["on_hand"] = round(r["on_hand"], 3)
-    r["low"] = bool(r["active"]) and r["reorder_level"] > 0 and r["on_hand"] <= r["reorder_level"]
+    r["low"] = bool(r["active"]) and bool(r["track_stock"]) and r["reorder_level"] > 0 and r["on_hand"] <= r["reorder_level"]
     return r
 
 
@@ -938,7 +948,7 @@ def stock_list(c: Ctx):
     out = rows(c.conn, sql + " ORDER BY i.category, i.name COLLATE NOCASE")
     for r in out:
         r["on_hand"] = round(r["on_hand"], 3)
-        r["low"] = bool(r["active"]) and r["reorder_level"] > 0 and r["on_hand"] <= r["reorder_level"]
+        r["low"] = bool(r["active"]) and bool(r["track_stock"]) and r["reorder_level"] > 0 and r["on_hand"] <= r["reorder_level"]
     return out
 
 
@@ -1098,4 +1108,9 @@ def dashboard(c: Ctx):
         out["month"] = rows(c.conn, "SELECT COUNT(*) n, COALESCE(SUM(total),0) value FROM jobs "
                                     "WHERE stage<>'cancelled' AND substr(created_at,1,7)=?", (month,))[0]
         out["balance_due"] = one(c.conn, "SELECT COALESCE(SUM(total-advance),0) v FROM jobs WHERE stage IN ('delivered','ready')")["v"]
+        out["accounts"] = accounts.account_summary(c.conn)
     return out
+
+
+# Accounting (parties, sales, purchases, payments, reports) lives in its own module.
+from . import accounts  # noqa: E402,F401

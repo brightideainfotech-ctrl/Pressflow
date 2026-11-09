@@ -1,6 +1,6 @@
 import { state, get, post, put, del, loadBootstrap } from "./api.js";
 import { h, add, clear, badge, field, input, select, formModal, toast, fail, money, money0, num, fmtDate, todayStr,
-         debounce, confirmBox, emptyState } from "./ui.js";
+         debounce, confirmBox, emptyState, logoImg, printHeader } from "./ui.js";
 
 const COLOR_MODES = [["multi", "Multi-colour (4)"], ["two", "2 colour"], ["single", "Single colour"], ["bw", "Black & white"]];
 const COLOR_TEXT = Object.fromEntries(COLOR_MODES);
@@ -79,7 +79,7 @@ function quoteSheet(q) {
     ...r.extras.map((e) => ["Also included", e.description]),
   ];
   return h("section", { class: "sheet" },
-    h("h1", null, s.company_name || "Quotation"),
+    logoImg(), h("h1", null, s.company_name || "Quotation"),
     h("div", { class: "small", style: { textAlign: "center" } }, [s.company_address, s.company_phone, s.company_email].filter(Boolean).join(" · "),
       s.company_gstin ? h("div", null, "GSTIN: " + s.company_gstin) : null),
     h("div", { class: "sub", style: { marginTop: ".5rem" } }, "QUOTATION"),

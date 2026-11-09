@@ -1,5 +1,5 @@
 import { state, get, post, put, isOffice, stageLabel } from "./api.js";
-import { h, add, clear, badge, field, select, formModal, toast, fail, money, num, fmtDate, fmtDateTime, debounce, emptyState } from "./ui.js";
+import { h, add, clear, badge, field, select, formModal, toast, fail, money, num, fmtDate, fmtDateTime, debounce, emptyState, logoImg, printHeader } from "./ui.js";
 
 export const progressBar = (pct) => h("div", { class: "pbar", title: `${pct || 0}% of this stage done` }, h("span", { style: { width: `${Math.min(100, pct || 0)}%` } }));
 const LEADS = ["manager", "desk", "superintendent"];
@@ -120,7 +120,7 @@ function workOrderSheet(job, showMoney) {
   const line = (label, value) => h("div", null, h("strong", null, label + ": "), value || "");
   const checks = (list, src) => h("div", { class: "checks" }, list.map(([label, rx]) => h("span", null, mark(src.some((x) => rx.test(x))) + " " + label)));
   return h("section", { class: "sheet print-only" },
-    h("h1", null, s.company_name || "Work order"), h("div", { class: "sub" }, `WORK ORDER - YEAR ${fyOf((job.created_at || "").slice(0, 10))}`),
+    logoImg(), h("h1", null, s.company_name || "Work order"), h("div", { class: "sub" }, `WORK ORDER - YEAR ${fyOf((job.created_at || "").slice(0, 10))}`),
     h("div", { class: "hdr" },
       h("div", null, line("Order No", job.order_no), line("Date", fmtDate((job.created_at || "").slice(0, 10)))),
       h("div", null, line("Quotation Date", fmtDate(job.quotation_date)), line("Proof Date", fmtDate(job.proof_date)), line("Delivery Date", fmtDate(job.delivery_date)),
@@ -280,6 +280,7 @@ export async function renderJobView(view, id) {
         h("div", null, badge(job.stage, stageLabel(job.stage)), " ", job.priority === "urgent" ? h("span", { class: "flag" }, "URGENT ") : null, h("span", { class: "muted" }, job.customer_name))),
       h("div", { class: "actions" }, h("button", { class: "btn", onclick: () => window.print() }, "Print work order"),
         office && job.quotation_id ? h("a", { class: "btn", href: `#/quotes/${job.quotation_id}` }, "Quotation " + (job.quotation_no || "")) : null,
+        office ? h("a", { class: "btn", href: `#/sales/new?job=${job.id}` }, "Create invoice") : null,
         state.user.role !== "operator" ? h("button", { class: "btn", onclick: edit }, "Edit details") : null)),
     h("div", { class: "cols two" }, h("div", null, holdCard, stageCard, specCard), h("div", null, matCard, infoCard, timeline)),
     workOrderSheet(job, office));

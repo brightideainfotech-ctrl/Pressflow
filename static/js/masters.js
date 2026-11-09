@@ -1,4 +1,5 @@
 import { state, get, post, put, del, isManager } from "./api.js";
+import { loadStates } from "./acc.js";
 import { sheetSizeField, weightsEditor, sizeNameFor } from "./sizes.js";
 import { h, add, clear, badge, field, input, select, formModal, modal, toast, fail, money, num, confirmBox, emptyState, debounce } from "./ui.js";
 
@@ -239,11 +240,28 @@ export async function renderSettings(view) {
   const inputs = Object.fromEntries(parts.map(([k, el]) => [k, el.querySelector("input")]));
   const round = h("input", { type: "checkbox", checked: s.round_to_rupee === "1" });
   const terms = h("textarea", { value: s.quote_terms || "" });
+  let logo = s.company_logo || "";
+  const preview = h("div", { style: { minHeight: "64px", display: "flex", alignItems: "center", gap: ".75rem", flexWrap: "wrap" } });
+  const drawLogo = () => {
+    clear(preview);
+    add(preview, logo ? h("img", { src: logo, alt: "Logo preview", style: { maxHeight: "64px", maxWidth: "240px", border: "1px solid var(--line)", padding: "4px", background: "#fff" } }) : h("span", { class: "muted small" }, "No logo yet"),
+      logo ? h("button", { class: "btn small", type: "button", onclick: () => { logo = ""; drawLogo(); } }, "Remove logo") : null);
+  };
+  const logoFile = h("input", { type: "file", accept: "image/png,image/jpeg", "aria-label": "Company logo" });
+  logoFile.addEventListener("change", async () => {
+    const f = logoFile.files[0]; if (!f) return;
+    if (!/^image\/(png|jpeg)$/.test(f.type)) { logoFile.value = ""; return fail(new Error("Choose a PNG or JPEG picture")); }
+    try { logo = await shrinkImage(f, 400, 200); drawLogo(); } catch (e) { fail(e); }
+  });
+  drawLogo();
+  const invTerms = h("textarea", { value: s.invoice_terms || "" });
+  const stateSel = select([["", "Not set (taken from GSTIN)"]], s.company_state_code || "");
+  loadStates().then((list) => { list.forEach((x) => stateSel.append(h("option", { value: x.code }, `${x.code} ${x.name}`))); stateSel.value = s.company_state_code || ""; }).catch(() => {});
   const confirmed = h("input", { type: "checkbox", checked: s.rates_confirmed === "1" });
   const save = h("button", { class: "btn primary" }, "Save settings");
   save.addEventListener("click", async () => {
     const body = Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.value]));
-    body.round_to_rupee = round.checked; body.quote_terms = terms.value; body.rates_confirmed = confirmed.checked;
+    body.round_to_rupee = round.checked; body.quote_terms = terms.value; body.invoice_terms = invTerms.value; body.company_logo = logo; body.company_state_code = stateSel.value; body.rates_confirmed = confirmed.checked;
     save.disabled = true;
     try { state.settings = await put("/api/settings", body); toast("Settings saved"); }
     catch (e) { fail(e); } finally { save.disabled = false; }
@@ -251,7 +269,32 @@ export async function renderSettings(view) {
   add(view, h("div", { class: "pagehead" }, h("h1", null, "Settings")),
     h("div", { class: "card" }, h("h2", null, "Press details & defaults"), h("div", { class: "row" }, parts.map(([, el]) => el)),
       h("label", { class: "check", style: { marginBottom: ".8rem" } }, round, "Round quotation totals to the nearest rupee"),
-      field("Terms printed on quotations", terms),
+      field("Company logo", h("div", null, preview, logoFile), "PNG or JPEG. It is shrunk automatically and printed at the top of quotations, work orders, invoices, statements and reports."),
+      field("Your state (decides CGST + SGST or IGST on invoices)", stateSel),
+      field("Terms printed on quotations", terms), field("Terms printed on sales invoices", invTerms),
       h("label", { class: "check", style: { marginBottom: ".8rem" } }, confirmed, "I have replaced the sample rates with our real rates (hides the warning banner)"),
       h("div", null, save)));
+}
+
+// Shrinks a picture to fit inside maxW x maxH and returns it as a data URL (PNG keeps transparency).
+// Reads the file as a data: URL because the page's security policy does not allow blob: images.
+function shrinkImage(file, maxW, maxH) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("That file could not be read"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, maxW / img.width, maxH / img.height);
+        const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        let out = c.toDataURL("image/png");
+        if (out.length > 300000) out = c.toDataURL("image/jpeg", 0.85);
+        out.length > 390000 ? reject(new Error("That picture is too detailed. Try a simpler or smaller logo.")) : resolve(out);
+      };
+      img.onerror = () => reject(new Error("That file could not be read as a picture"));
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
