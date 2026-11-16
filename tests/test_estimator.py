@@ -9,7 +9,7 @@ from press.estimator import EstimateError, compute_ups, estimate, r2  # noqa: E4
 
 def masters(**over):
     m = {
-        "papers": {1: dict(id=1, name="Test sheet", gsm=80, width_in=20, height_in=30, rate_per_ream=1000)},
+        "papers": {1: dict(id=1, name="Test sheet", gsm=80, width_cm=20, height_cm=30, rate_per_ream=1000)},
         "machines": {
             1: dict(id=1, name="Offset", kind="offset", rate_per_1000=100, per_color=1, setup_per_plate=0,
                     min_charge=0, makeready_sheets=0, needs_plate=1, max_colors=4),
@@ -28,7 +28,7 @@ def masters(**over):
     return m
 
 
-SETTINGS = dict(bleed_in=0, gripper_in=0, wastage_pct=0, default_margin_pct=0, gst_pct=0, round_to_rupee="0")
+SETTINGS = dict(bleed_cm=0, gripper_cm=0, wastage_pct=0, default_margin_pct=0, gst_pct=0, round_to_rupee="0")
 
 
 def base_spec(**over):
@@ -151,13 +151,13 @@ class EstimateTests(unittest.TestCase):
     def test_finishing_bases(self):
         spec = base_spec(finishing=[
             dict(finishing_id=1),             # 1000 copies / 1000 * 150 = 150
-            dict(finishing_id=2),             # 1000 * (10*15/144) sq ft * 2
+            dict(finishing_id=2),             # 1000 * (10*15/929.03) sq ft * 2
             dict(finishing_id=3, qty=40),     # 40 * 5 = 200
             dict(finishing_id=4),             # flat 900
         ])
         f = {x["finishing_id"]: x["amount"] for x in estimate(spec, masters(), SETTINGS)["finishing"]}
         self.assertEqual(f[1], 150.0)
-        self.assertEqual(f[2], r2(1000 * (150 / 144) * 2))
+        self.assertEqual(f[2], r2(1000 * (150 / 929.0304) * 2))
         self.assertEqual(f[3], 200.0)
         self.assertEqual(f[4], 900.0)
 
@@ -218,3 +218,35 @@ class EstimateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PackingTests(unittest.TestCase):
+    def masters_with_packing(self):
+        M = masters()
+        M["finishing"][50] = dict(id=50, name="Carton", group_name="Packing", basis="per_unit", rate=35.0, min_charge=0, active=1)
+        M["finishing"][51] = dict(id=51, name="Shrink wrap", group_name="Packing", basis="per_copy", rate=1.5, min_charge=100, active=1)
+        M["finishing"][52] = dict(id=52, name="Labelling", group_name="Packing", basis="job", rate=250.0, min_charge=0, active=1)
+        return M
+
+    def test_cartons_worked_out_from_copies_per_pack(self):
+        M = self.masters_with_packing()
+        base = estimate(base_spec(), M, SETTINGS)
+        spec = base_spec(packing=[dict(finishing_id=50, per_pack=300), dict(finishing_id=51), dict(finishing_id=52)])
+        r = estimate(spec, M, SETTINGS)
+        cartons, wrap, label = r["packing"]
+        self.assertEqual(cartons["qty"], 4)          # 1000 copies / 300 per carton = 3.33 -> 4 cartons
+        self.assertEqual(cartons["amount"], 140.0)
+        self.assertEqual(wrap["amount"], 1500.0)     # 1000 x 1.5
+        self.assertEqual(label["amount"], 250.0)
+        self.assertEqual(r["totals"]["packing"], 1890.0)
+        self.assertAlmostEqual(r["totals"]["cost"], base["totals"]["cost"] + 1890.0, places=2)
+
+    def test_packs_typed_directly_and_errors(self):
+        M = self.masters_with_packing()
+        r = estimate(base_spec(packing=[dict(finishing_id=50, qty=7)]), M, SETTINGS)
+        self.assertEqual(r["packing"][0]["amount"], 245.0)
+        with self.assertRaises(EstimateError):
+            estimate(base_spec(packing=[dict(finishing_id=50)]), M, SETTINGS)               # per-unit item with no count
+        with self.assertRaises(EstimateError):
+            estimate(base_spec(packing=[dict(finishing_id=51, per_pack=100)]), M, SETTINGS)  # per-pack only for per-unit items
+        self.assertEqual(estimate(base_spec(), M, SETTINGS)["totals"]["packing"], 0.0)

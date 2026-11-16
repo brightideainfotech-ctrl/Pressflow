@@ -219,7 +219,7 @@ def change_password(c: Ctx):
 # ---------------------------------------------------------------- settings / bootstrap
 
 NUMERIC_SETTINGS = {"gst_pct": (0, 50), "default_margin_pct": (0, 1000), "wastage_pct": (0, 100),
-                    "bleed_in": (0, 5), "gripper_in": (0, 10), "quote_valid_days": (1, 365)}
+                    "bleed_cm": (0, 13), "gripper_cm": (0, 25), "quote_valid_days": (1, 365)}
 TEXT_SETTINGS = ("company_name", "company_address", "company_phone", "company_email", "company_gstin",
                  "hsn_default", "quote_terms", "company_state_code", "invoice_terms")
 FLAG_SETTINGS = ("round_to_rupee", "rates_confirmed")
@@ -266,7 +266,7 @@ def load_masters(conn) -> dict:
     papers = {r["id"]: r for r in rows(conn, "SELECT * FROM papers")}
     for r in papers.values():
         r["sizes"] = []
-    for sz in rows(conn, "SELECT * FROM paper_sizes ORDER BY width_in*height_in"):
+    for sz in rows(conn, "SELECT * FROM paper_sizes ORDER BY width_cm*height_cm"):
         if sz["paper_id"] in papers:
             papers[sz["paper_id"]]["sizes"].append(sz)
     return {
@@ -300,8 +300,8 @@ def bootstrap(c: Ctx):
 
 MASTERS = {
     "papers": ("papers", "name", OFFICE, MANAGER, [
-        ("name", "str", True), ("gsm", "int", False), ("width_in", "float", False),
-        ("height_in", "float", False), ("pricing", "choice:ream,kg", False, "ream"), ("weight_mode", "choice:auto,table", False, "auto"),
+        ("name", "str", True), ("gsm", "int", False), ("width_cm", "float", False),
+        ("height_cm", "float", False), ("pricing", "choice:ream,kg", False, "ream"), ("weight_mode", "choice:auto,table", False, "auto"),
         ("rate_per_ream", "float", False), ("rate_per_kg", "float", False), ("active", "bool", False, 1)]),
     "machines": ("machines", "name", OFFICE, MANAGER, [
         ("name", "str", True), ("kind", "choice:offset,web,digital,riso", False, "offset"),
@@ -322,7 +322,7 @@ MASTERS = {
 
 
 def _check_paper(v: dict):
-    w, hh = v.get("width_in") or 0, v.get("height_in") or 0
+    w, hh = v.get("width_cm") or 0, v.get("height_cm") or 0
     if (w > 0) != (hh > 0):
         raise ApiError(422, "Enter both the width and the height, or leave both blank")
     if v.get("pricing") != "kg" and not (w > 0 and hh > 0):
@@ -343,7 +343,7 @@ CHECKS = {"papers": _check_paper}
 def paper_sizes_get(c: Ctx):
     pid = int(c.params[0])
     need(one(c.conn, "SELECT id FROM papers WHERE id=?", (pid,)), "Paper")
-    return rows(c.conn, "SELECT id,name,width_in,height_in,kg_per_100 FROM paper_sizes WHERE paper_id=? ORDER BY width_in*height_in", (pid,))
+    return rows(c.conn, "SELECT id,name,width_cm,height_cm,kg_per_100 FROM paper_sizes WHERE paper_id=? ORDER BY width_cm*height_cm", (pid,))
 
 
 @route("PUT", r"/api/papers/(\d+)/sizes", roles=MANAGER)
@@ -358,16 +358,16 @@ def paper_sizes_put(c: Ctx):
     for it in items:
         if not isinstance(it, dict):
             raise ApiError(422, "Each size needs a name, width, height and kg")
-        v = clean(it, [("name", "str", False), ("width_in", "pfloat", True), ("height_in", "pfloat", True), ("kg_per_100", "pfloat", True)])
-        key = tuple(sorted((round(v["width_in"], 2), round(v["height_in"], 2))))
+        v = clean(it, [("name", "str", False), ("width_cm", "pfloat", True), ("height_cm", "pfloat", True), ("kg_per_100", "pfloat", True)])
+        key = tuple(sorted((round(v["width_cm"], 2), round(v["height_cm"], 2))))
         if key in seen:
-            raise ApiError(422, f"The size {v['width_in']:g} x {v['height_in']:g} in is listed twice")
+            raise ApiError(422, f"The size {v['width_cm']:g} x {v['height_cm']:g} cm is listed twice")
         seen.append(key)
         clean_rows.append(v)
     c.conn.execute("DELETE FROM paper_sizes WHERE paper_id=?", (pid,))
     for v in clean_rows:
-        c.conn.execute("INSERT INTO paper_sizes(paper_id,name,width_in,height_in,kg_per_100) VALUES(?,?,?,?,?)",
-                       (pid, v["name"], v["width_in"], v["height_in"], v["kg_per_100"]))
+        c.conn.execute("INSERT INTO paper_sizes(paper_id,name,width_cm,height_cm,kg_per_100) VALUES(?,?,?,?,?)",
+                       (pid, v["name"], v["width_cm"], v["height_cm"], v["kg_per_100"]))
     return paper_sizes_get(c)
 
 
@@ -653,7 +653,7 @@ def build_work(result: dict) -> dict:
         m["kg"] = round(m["kg"] + comp.get("paper_kg", 0), 3)
     return {
         "materials": list(mats.values()),
-        "size": f"{result['size_w']:g} x {result['size_h']:g} in",
+        "size": f"{result['size_w']:g} x {result['size_h']:g} {result.get('unit', 'in')}",
         "copies": result["copies"],
         "papers": [{"label": f"{p['name']} - {p['paper']}", "copies": result["copies"]} for p in result["components"]],
         "pages": pages,
@@ -661,6 +661,7 @@ def build_work(result: dict) -> dict:
         "plates": sorted({p["plate"] for p in result["components"] if p["plate"]}),
         "binding": [f["name"] + (f" ({f['note']})" if f["note"] else "") for f in result["finishing"]],
         "design": result["totals"]["design"] > 0,
+        "packing": [p["name"] + (f" ({p['qty']:g} packs of {p['per_pack']:g})" if p.get("per_pack") else "") for p in result.get("packing", [])],
         "extras": [e["description"] for e in result["extras"]],
         "parts": parts,
     }

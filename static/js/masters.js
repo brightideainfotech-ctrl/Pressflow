@@ -113,7 +113,7 @@ const RATE_TABS = [
   ["Paper", () => crud({
     endpoint: "/api/papers", noun: "paper", afterChange: refresh,
     columns: [{ label: "Paper", get: (r) => r.name }, { label: "GSM", num: true, get: (r) => r.gsm || "" },
-      { label: "Sheet size (in)", get: (r) => (r.width_in > 0 ? `${sizeNameFor(r.width_in, r.height_in) ? sizeNameFor(r.width_in, r.height_in) + " · " : ""}${r.width_in} × ${r.height_in}` : "no fixed size") }, { label: "Bought by", get: (r) => (r.pricing === "kg" ? "Weight (kg)" : "Ream") },
+      { label: "Sheet size (cm)", get: (r) => (r.width_cm > 0 ? `${sizeNameFor(r.width_cm, r.height_cm) ? sizeNameFor(r.width_cm, r.height_cm) + " · " : ""}${r.width_cm} × ${r.height_cm}` : "no fixed size") }, { label: "Bought by", get: (r) => (r.pricing === "kg" ? "Weight (kg)" : "Ream") },
       { label: "Rate", num: true, get: (r) => (r.pricing === "kg" ? `${money(r.rate_per_kg)} / kg` : `${money(r.rate_per_ream)} / ream`) },
       { label: "Weight worked out", get: (r) => (r.pricing !== "kg" ? "—" : r.weight_mode === "table"
         ? h("button", { class: "btn small", onclick: () => weightsModal(r) }, "My weights per size") : "From GSM and size") }],
@@ -233,8 +233,8 @@ export async function renderSettings(view) {
     numF("gst_pct", "Default GST %", "Confirm the correct rate for your jobs with your accountant", "0.5"), text("hsn_default", "Default HSN code"),
     numF("default_margin_pct", "Default mark-up on cost %", "Starting value on each new quotation", "0.5"),
     numF("wastage_pct", "Default paper wastage %", "Added to every printed part unless overridden", "0.5"),
-    numF("bleed_in", "Bleed (in)", "Added around each page when working out how many fit on a sheet", "0.005"),
-    numF("gripper_in", "Gripper margin (in)", "Strip of the sheet the machine holds and cannot print on", "0.05"),
+    numF("bleed_cm", "Bleed (cm)", "Added around each page when working out how many fit on a sheet", "0.05"),
+    numF("gripper_cm", "Gripper margin (cm)", "Strip of the sheet the machine holds and cannot print on", "0.1"),
     numF("quote_valid_days", "Quotation valid for (days)", null, "1"),
   ];
   const inputs = Object.fromEntries(parts.map(([k, el]) => [k, el.querySelector("input")]));

@@ -1,7 +1,7 @@
 """Itemised print-job estimator.
 
 Pure functions only: no database or HTTP access, so the maths can be tested on
-its own. All sizes are in inches, all money in rupees.
+its own. All sizes are in centimetres, all money in rupees.
 
 How a job is priced
 -------------------
@@ -18,7 +18,7 @@ A job is made of *components* (text, cover, end paper ...). For each one:
 
 Finishing / binding lines are priced by their basis (per copy, per 1000,
 per sq ft, per unit, or flat per job), then design charge and any free-form
-extras are added.  Mark-up %, discount and GST come last.
+packing and extras are added.  Mark-up %, discount and GST come last.
 """
 from __future__ import annotations
 
@@ -87,10 +87,10 @@ def compute_ups(piece_w, piece_h, sheet_w, sheet_h, bleed=0.0, gripper=0.0) -> i
     return best
 
 
-def _find_size(sizes, w, h, tol=0.06):
+def _find_size(sizes, w, h, tol=0.15):
     """The entry of a paper's weight table that matches w x h (either way round)."""
     for sz in sizes:
-        a, b = sz["width_in"], sz["height_in"]
+        a, b = sz["width_cm"], sz["height_cm"]
         if (abs(a - w) <= tol and abs(b - h) <= tol) or (abs(a - h) <= tol and abs(b - w) <= tol):
             return sz
     return None
@@ -115,12 +115,12 @@ def _component(c, copies, w, h, M, S):
     colors = int(_f(colors, f"{label}: colours", lo=1, hi=8))
 
     warnings: list[str] = []
-    bleed = _f(S.get("bleed_in"), "Bleed", lo=0, default=0.125)
-    gripper = _f(S.get("gripper_in"), "Gripper", lo=0, default=0.5)
+    bleed = _f(S.get("bleed_cm"), "Bleed", lo=0, default=0.3)
+    gripper = _f(S.get("gripper_cm"), "Gripper", lo=0, default=1.0)
 
-    ups_auto = compute_ups(w, h, paper["width_in"], paper["height_in"], bleed, gripper)
+    ups_auto = compute_ups(w, h, paper["width_cm"], paper["height_cm"], bleed, gripper)
     ups_in = c.get("ups")
-    has_sheet = paper["width_in"] > 0 and paper["height_in"] > 0
+    has_sheet = paper["width_cm"] > 0 and paper["height_cm"] > 0
     if not has_sheet and ups_in in (None, ""):
         raise EstimateError(
             f"{label}: {paper['name']} has no sheet size, so enter 'Pages per sheet side' for this part")
@@ -130,8 +130,8 @@ def _component(c, copies, w, h, M, S):
         ups = ups_auto
     if ups < 1:
         raise EstimateError(
-            f"{label}: a {w:g} x {h:g} in page does not fit on the {paper['name']} sheet "
-            f"({paper['width_in']:g} x {paper['height_in']:g} in)"
+            f"{label}: a {w:g} x {h:g} cm page does not fit on the {paper['name']} sheet "
+            f"({paper['width_cm']:g} x {paper['height_cm']:g} cm)"
         )
 
     waste_pct = c.get("wastage_pct")
@@ -157,24 +157,24 @@ def _component(c, copies, w, h, M, S):
         passes = math.ceil(colors_eff / machine["max_colors"])
         warnings.append(f"{label}: {machine['name']} prints {machine['max_colors']} colour(s) per pass, so this needs {passes} passes")
 
-    # Sheet weight in kg = area (m2) x gsm / 1000. Reel paper is bought and costed by weight.
+    # Sheet weight in kg = area (m2) x gsm / 1000 (area in cm2 / 10000 = m2). Reel paper is bought and costed by weight.
     # Weight of paper used. Three ways, depending on the paper's set-up:
     #  - table: the press's own "kg per 100 sheets" figure for this size
     #  - sheet: sheet area x GSM (the paper has a sheet size)
     #  - page area: pages printed x page area x GSM (no sheet size)
     pieces = sheets_gross if has_sheet else sheets_gross * ups
-    size_w, size_h = (paper["width_in"], paper["height_in"]) if has_sheet else (w, h)
+    size_w, size_h = (paper["width_cm"], paper["height_cm"]) if has_sheet else (w, h)
     weight_src = "sheet" if has_sheet else "area"
     if (paper.get("weight_mode") or "auto") == "table":
         hit = _find_size(paper.get("sizes") or [], size_w, size_h)
         if hit is None:
             raise EstimateError(
-                f"{label}: no weight is entered for {size_w:g} x {size_h:g} in on {paper['name']}. "
+                f"{label}: no weight is entered for {size_w:g} x {size_h:g} cm on {paper['name']}. "
                 "Add it under Rate master > Paper > Weights")
         paper_kg = pieces * hit["kg_per_100"] / 100.0
         weight_src = "table"
     else:
-        paper_kg = pieces * size_w * size_h * 0.00064516 * float(paper["gsm"] or 0) / 1000.0
+        paper_kg = pieces * size_w * size_h * 0.0001 * float(paper["gsm"] or 0) / 1000.0
     by_weight = (paper.get("pricing") or "ream") == "kg"
     if by_weight:
         if not paper["gsm"] and weight_src != "table":
@@ -256,7 +256,7 @@ def _finishing_line(line, copies, w, h, M, components=()):
     elif basis == "per_1000":
         used, raw = base_qty, base_qty / 1000.0 * f["rate"]
     elif basis == "per_sqft":
-        used, raw = base_qty, base_qty * (w * h / 144.0) * f["rate"]
+        used, raw = base_qty, base_qty * (w * h / 929.0304) * f["rate"]
     elif basis == "per_1000_sheets":
         # printed sheets that go through the work, e.g. every sheet of the text folded once
         auto = sum(c["sheets_net"] for c in chosen)
@@ -292,8 +292,8 @@ def _finishing_line(line, copies, w, h, M, components=()):
 
 
 def _price(spec, copies, M, S):
-    w = _f(spec.get("size_w"), "Finished width", lo=0.1, hi=200)
-    h = _f(spec.get("size_h"), "Finished height", lo=0.1, hi=200)
+    w = _f(spec.get("size_w"), "Finished width", lo=0.3, hi=500)
+    h = _f(spec.get("size_h"), "Finished height", lo=0.3, hi=500)
 
     comps_in = spec.get("components") or []
     if not comps_in:
@@ -306,6 +306,25 @@ def _price(spec, copies, M, S):
     if len(fin_in) > 40:
         raise EstimateError("Too many finishing lines (maximum 40)")
     finishing = [_finishing_line(f, copies, w, h, M, components) for f in fin_in]
+
+    # Packing: finishing-master items of group "Packing". "Copies per pack" turns a per-unit item
+    # (carton, bundle) into a pack count: 1000 copies at 250 per carton = 4 cartons.
+    pack_in = spec.get("packing") or []
+    if len(pack_in) > 10:
+        raise EstimateError("Too many packing lines (maximum 10)")
+    packing = []
+    for pl in pack_in:
+        pl = dict(pl)
+        per_pack = pl.get("per_pack")
+        if per_pack not in (None, ""):
+            item = _get(M["finishing"], pl.get("finishing_id"), "Packing item")
+            if item["basis"] != "per_unit":
+                raise EstimateError(f"{item['name']}: 'Copies per pack' only works for items charged per unit (carton, bundle)")
+            n = _f(per_pack, f"{item['name']}: copies per pack", lo=1, hi=1_000_000)
+            pl["qty"] = math.ceil(copies / n - EPS)
+        row = _finishing_line(pl, copies, w, h, M, components)
+        row["per_pack"] = float(per_pack) if per_pack not in (None, "") else None
+        packing.append(row)
 
     extras = []
     for e in (spec.get("extras") or [])[:20]:
@@ -320,8 +339,9 @@ def _price(spec, copies, M, S):
     plates_t = r2(sum(c["plate_cost"] for c in components))
     print_t = r2(sum(c["print_cost"] for c in components))
     fin_t = r2(sum(f["amount"] for f in finishing))
+    pack_t = r2(sum(p["amount"] for p in packing))
     extras_t = r2(sum(e["amount"] for e in extras))
-    cost = r2(paper_t + plates_t + print_t + fin_t + design + extras_t)
+    cost = r2(paper_t + plates_t + print_t + fin_t + pack_t + design + extras_t)
 
     margin_pct = _f(spec.get("margin_pct"), "Mark-up %", lo=0, hi=1000, default=S.get("default_margin_pct", 25))
     gst_pct = _f(spec.get("gst_pct"), "GST %", lo=0, hi=50, default=S.get("gst_pct", 0))
@@ -348,14 +368,17 @@ def _price(spec, copies, M, S):
         "copies": copies,
         "size_w": w,
         "size_h": h,
+        "unit": "cm",
         "components": components,
         "finishing": finishing,
+        "packing": packing,
         "extras": extras,
         "totals": {
             "paper": paper_t,
             "plates": plates_t,
             "printing": print_t,
             "finishing": fin_t,
+            "packing": pack_t,
             "design": design,
             "extras": extras_t,
             "cost": cost,

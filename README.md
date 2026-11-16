@@ -102,3 +102,14 @@ Set your logo in Settings; it is printed on quotations, work orders, invoices, s
 
 Limits: no double-entry ledger, bank reconciliation, credit/debit notes, TDS or e-invoicing. Have your accountant check the GST
 figures before filing.
+
+
+## Sizes and packing
+
+All sizes are in centimetres (finished size, sheet sizes, weight tables, bleed and gripper). Paper weight per sheet in kg =
+length (cm) x width (cm) x GSM / 10,000,000; for a 500-sheet ream that is the usual length x width x GSM / 20,000.
+An older database is converted from inches once on first start (see `_inches_to_cm` in `press/db.py`); saved quotations keep their
+old result, marked as inches, until recalculated. Lamination-type rates stay "per sq ft" and are converted from the cm size.
+
+Packing items are finishing-master items in the group "Packing". On a quotation, "copies per pack" turns a per-unit item
+(carton, bundle) into a pack count. Packing cost is part of the job cost before mark-up and GST.

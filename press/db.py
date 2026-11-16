@@ -72,8 +72,8 @@ CREATE TABLE IF NOT EXISTS papers(
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   gsm INTEGER NOT NULL DEFAULT 0,
-  width_in REAL NOT NULL,
-  height_in REAL NOT NULL,
+  width_cm REAL NOT NULL,
+  height_cm REAL NOT NULL,
   rate_per_ream REAL NOT NULL,
   active INTEGER NOT NULL DEFAULT 1
 );
@@ -182,8 +182,8 @@ CREATE TABLE IF NOT EXISTS paper_sizes(
   id INTEGER PRIMARY KEY,
   paper_id INTEGER NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
   name TEXT NOT NULL DEFAULT '',
-  width_in REAL NOT NULL,
-  height_in REAL NOT NULL,
+  width_cm REAL NOT NULL,
+  height_cm REAL NOT NULL,
   kg_per_100 REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_paper_sizes ON paper_sizes(paper_id);
@@ -298,7 +298,43 @@ MIGRATIONS = [
 ]
 
 
+def _inches_to_cm(conn: sqlite3.Connection) -> None:
+    """One-time switch of an older database from inches to centimetres (sizes, bleed, gripper, saved quotation specs)."""
+    import json
+    if conn.execute("SELECT 1 FROM meta WHERE key='units_cm'").fetchone():
+        return
+    for table in ("papers", "paper_sizes"):
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for old, new in (("width_in", "width_cm"), ("height_in", "height_cm")):
+            if old in cols:
+                conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+                conn.execute(f"UPDATE {table} SET {new}=ROUND({new}*2.54, 2)")
+    for old, new in (("bleed_in", "bleed_cm"), ("gripper_in", "gripper_cm")):
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (old,)).fetchone()
+        if row:
+            try:
+                v = str(round(float(row["value"]) * 2.54, 2))
+            except ValueError:
+                v = row["value"]
+            conn.execute("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (new, v))
+            conn.execute("DELETE FROM settings WHERE key=?", (old,))
+    # Saved quotations keep their stored result (marked as inches) but the editable spec is converted so that re-saving is right.
+    for q in conn.execute("SELECT id, spec_json, result_json FROM quotations").fetchall():
+        try:
+            spec, res = json.loads(q["spec_json"]), json.loads(q["result_json"])
+        except ValueError:
+            continue
+        for k in ("size_w", "size_h"):
+            if isinstance(spec.get(k), (int, float)):
+                spec[k] = round(spec[k] * 2.54, 2)
+        if isinstance(res, dict):
+            res.setdefault("unit", "in")
+        conn.execute("UPDATE quotations SET spec_json=?, result_json=? WHERE id=?", (json.dumps(spec), json.dumps(res), q["id"]))
+    conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('units_cm','1')")
+
+
 def migrate(conn: sqlite3.Connection) -> None:
+    _inches_to_cm(conn)
     for table, col, ddl in MIGRATIONS:
         have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
         if col not in have:
@@ -317,8 +353,8 @@ DEFAULT_SETTINGS = {
     "hsn_default": "",
     "default_margin_pct": "25",
     "wastage_pct": "5",
-    "bleed_in": "0.125",
-    "gripper_in": "0.5",
+    "bleed_cm": "0.3",
+    "gripper_cm": "1.0",
     "quote_valid_days": "15",
     "round_to_rupee": "1",
     "quote_terms": "Rates are valid for the period stated. Advance payment is required before work starts. "
@@ -330,21 +366,21 @@ DEFAULT_SETTINGS = {
 # SAMPLE RATES ONLY. They exist so the estimator works on day one; the press
 # must replace them with its own rates (Rates screen) before quoting customers.
 SAMPLE_REELS = [
-    # name, gsm, reel width (in), cut length (in), rate per kg
-    ("Apelitho 70 gsm reel (23 in, cut 36 in)", 70, 23, 36, 80),
-    ("Apelitho 60 gsm reel (23 in, cut 36 in)", 60, 23, 36, 78),
+    # name, gsm, reel width (cm), cut length (cm), rate per kg
+    ("Apelitho 70 gsm reel (58 cm, cut 91 cm)", 70, 58.4, 91.4, 80),
+    ("Apelitho 60 gsm reel (58 cm, cut 91 cm)", 60, 58.4, 91.4, 78),
 ]
 
 SAMPLE_PAPERS = [
-    # name, gsm, width, height, rate per ream (500 sheets)
-    ("Maplitho 70 gsm 23x36", 70, 23, 36, 1500),
-    ("Maplitho 80 gsm 23x36", 80, 23, 36, 1750),
-    ("Maplitho 80 gsm 18x23 (Demy)", 80, 18, 23, 910),
-    ("Art Paper 130 gsm 23x36", 130, 23, 36, 3300),
-    ("Art Paper 170 gsm 23x36", 170, 23, 36, 4300),
-    ("Art Card 250 gsm 23x36", 250, 23, 36, 6500),
-    ("Copier 75 gsm A4", 75, 8.27, 11.69, 280),
-    ("Copier 75 gsm A3", 75, 11.69, 16.54, 560),
+    # name, gsm, width (cm), height (cm), rate per ream (500 sheets)
+    ("Maplitho 70 gsm 23x36", 70, 58.4, 91.4, 1500),
+    ("Maplitho 80 gsm 23x36", 80, 58.4, 91.4, 1750),
+    ("Maplitho 80 gsm 18x23 (Demy)", 80, 45.7, 58.4, 910),
+    ("Art Paper 130 gsm 23x36", 130, 58.4, 91.4, 3300),
+    ("Art Paper 170 gsm 23x36", 170, 58.4, 91.4, 4300),
+    ("Art Card 250 gsm 23x36", 250, 58.4, 91.4, 6500),
+    ("Copier 75 gsm A4", 75, 21, 29.7, 280),
+    ("Copier 75 gsm A3", 75, 29.7, 42, 560),
 ]
 SAMPLE_PLATES = [("Polymaster", 120), ("Laser plate", 60), ("Aluminium CTP", 350)]
 SAMPLE_MACHINES = [
@@ -387,6 +423,13 @@ SAMPLE_FINISHING = [
     ("Register binding", "Binding", "per_copy", 80.0, 500),
     ("Padmaking", "Binding", "per_copy", 1.5, 100),
 ]
+# Packing items. "per_unit" ones are counted in cartons or bundles (enter copies per pack on the quotation).
+SAMPLE_PACKING = [
+    ("Carton box packing (per carton)", "Packing", "per_unit", 35.0, 0),
+    ("Bundling with brown paper (per bundle)", "Packing", "per_unit", 12.0, 0),
+    ("Shrink wrap (per copy)", "Packing", "per_copy", 1.5, 100),
+    ("Packing and labelling (flat per job)", "Packing", "job", 250.0, 0),
+]
 
 
 def connect(path: str | None = None) -> sqlite3.Connection:
@@ -411,9 +454,9 @@ def init_db(path: str | None = None) -> None:
         if not seeded:
             for k, v in DEFAULT_SETTINGS.items():
                 conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
-            conn.executemany("INSERT INTO papers(name,gsm,width_in,height_in,rate_per_ream) VALUES(?,?,?,?,?)", SAMPLE_PAPERS)
+            conn.executemany("INSERT INTO papers(name,gsm,width_cm,height_cm,rate_per_ream) VALUES(?,?,?,?,?)", SAMPLE_PAPERS)
             conn.executemany(
-                "INSERT INTO papers(name,gsm,width_in,height_in,rate_per_ream,pricing,rate_per_kg) VALUES(?,?,?,?,0,'kg',?)",
+                "INSERT INTO papers(name,gsm,width_cm,height_cm,rate_per_ream,pricing,rate_per_kg) VALUES(?,?,?,?,0,'kg',?)",
                 SAMPLE_REELS)
             conn.executemany("INSERT INTO plate_types(name,rate) VALUES(?,?)", SAMPLE_PLATES)
             conn.executemany(
@@ -429,6 +472,10 @@ def init_db(path: str | None = None) -> None:
         else:
             for k, v in DEFAULT_SETTINGS.items():  # new settings added in later versions
                 conn.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
+        # Packing items arrived in a later version: add the samples once to a database that has none.
+        if not conn.execute("SELECT 1 FROM finishing WHERE group_name='Packing'").fetchone() and not conn.execute("SELECT 1 FROM meta WHERE key='packing_seeded'").fetchone():
+            conn.executemany("INSERT INTO finishing(name,group_name,basis,rate,min_charge) VALUES(?,?,?,?,?)", SAMPLE_PACKING)
+            conn.execute("INSERT INTO meta(key,value) VALUES('packing_seeded','1')")
         conn.commit()
     finally:
         conn.close()

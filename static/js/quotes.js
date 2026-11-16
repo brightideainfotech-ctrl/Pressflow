@@ -6,9 +6,9 @@ const COLOR_MODES = [["multi", "Multi-colour (4)"], ["two", "2 colour"], ["singl
 const COLOR_TEXT = Object.fromEntries(COLOR_MODES);
 const kgText = (kg) => (kg < 1 ? `${+(kg * 1000).toFixed(2)} g` : `${+kg.toFixed(3)} kg`);
 const PARTS = [["text", "Text / inside pages"], ["cover", "Cover"], ["end_paper", "End paper"], ["insert", "Insert / fold-out sheet"]];
-const PRESETS = [["", "Custom size…"], ["11.69x16.54", "A3 (11.69 × 16.54 in)"], ["8.27x11.69", "A4 (8.27 × 11.69 in)"],
-  ["5.83x8.27", "A5 (5.83 × 8.27 in)"], ["4.13x5.83", "A6 (4.13 × 5.83 in)"], ["3.9x8.27", "DL (3.9 × 8.27 in)"],
-  ["8.5x11", "Letter (8.5 × 11 in)"], ["3.5x2", "Visiting card (3.5 × 2 in)"]];
+const PRESETS = [["", "Custom size…"], ["29.7x42", "A3 (29.7 × 42 cm)"], ["21x29.7", "A4 (21 × 29.7 cm)"],
+  ["14.8x21", "A5 (14.8 × 21 cm)"], ["10.5x14.8", "A6 (10.5 × 14.8 cm)"], ["9.9x21", "DL (9.9 × 21 cm)"],
+  ["21.6x27.9", "Letter (21.6 × 27.9 cm)"], ["9x5.5", "Visiting card (9 × 5.5 cm)"]];
 const BASIS = { per_copy: "per copy", per_1000: "per 1000", per_sqft: "per sq ft", per_unit: "per unit", job: "per job", per_1000_sheets: "per 1000 sheets", per_1000_leaves: "per 1000 leaves" };
 const EDITABLE = ["draft", "sent", "rejected"];
 
@@ -57,7 +57,11 @@ export function breakdown(r) {
     rows.push(line("Printing", `${c.machine} · ${num(c.impressions)} impressions`, money(c.print_cost)));
   }
   if (r.finishing.length) rows.push(h("tr", null, h("td", { colspan: 3 }, h("strong", null, "Binding & finishing"))));
-  for (const f of r.finishing) rows.push(line(f.name, `${money(f.rate)} ${BASIS[f.basis]}${f.basis === "job" ? "" : " × " + num(f.qty)}${f.times && f.times !== 1 ? " × " + f.times + " times" : ""}${f.applies_to ? " · " + f.applies_to : ""}`, money(f.amount)));
+  const finLine = (f) => line(f.name, `${money(f.rate)} ${BASIS[f.basis]}${f.basis === "job" ? "" : " × " + num(f.qty)}${f.times && f.times !== 1 ? " × " + f.times + " times" : ""}${f.applies_to ? " · " + f.applies_to : ""}`, money(f.amount));
+  for (const f of r.finishing) rows.push(finLine(f));
+  const packs = r.packing || [];
+  if (packs.length) rows.push(h("tr", null, h("td", { colspan: 3 }, h("strong", null, "Packing"))));
+  for (const p of packs) rows.push(line(p.name, `${money(p.rate)} ${BASIS[p.basis]}${p.basis === "job" ? "" : " × " + num(p.qty)}${p.per_pack ? " (" + num(p.per_pack) + " copies per pack)" : ""}`, money(p.amount)));
   if (t.design) rows.push(line("Design / DTP", "", money(t.design)));
   for (const e of r.extras) rows.push(line(e.description, "other charge", money(e.amount)));
   rows.push(line("Cost", "", money(t.cost), "total"));
@@ -72,9 +76,10 @@ export function breakdown(r) {
 function quoteSheet(q) {
   const s = state.settings, r = q.result, t = r.totals, c = q.customer;
   const specRows = [
-    ["Job", q.title], ["Finished size", `${r.size_w} × ${r.size_h} in`], ["Quantity", `${num(r.copies)} copies`],
+    ["Job", q.title], ["Finished size", `${r.size_w} × ${r.size_h} ${r.unit || "in"}`], ["Quantity", `${num(r.copies)} copies`],
     ...r.components.map((p) => [p.name, `${num(p.pages)} pages · ${p.paper} · ${COLOR_TEXT[p.color_mode] || p.colors + " colour"}`]),
     ...(r.finishing.length ? [["Binding / finishing", r.finishing.map((f) => f.name + (f.note ? ` (${f.note})` : "")).join(", ")]] : []),
+    ...((r.packing || []).length ? [["Packing", r.packing.map((p) => p.name + (p.per_pack ? ` (${num(p.qty)} packs of ${num(p.per_pack)})` : "")).join(", ")]] : []),
     ...(t.design ? [["Design / DTP", "Included"]] : []),
     ...r.extras.map((e) => ["Also included", e.description]),
   ];
@@ -195,7 +200,7 @@ export async function renderQuoteEditor(view, id) {
     customer_id: src ? String(src.customer_id) : "", title: src ? src.title : "", notes: src ? src.notes || "" : "",
     quote_date: existing ? existing.quote_date : "", valid_until: existing ? existing.valid_until : "",
     spec: src ? JSON.parse(JSON.stringify(src.spec)) : {
-      size_w: 5.83, size_h: 8.27, copies: 1000, components: [newPart(M)], finishing: [], extras: [],
+      size_w: 14.8, size_h: 21, copies: 1000, components: [newPart(M)], finishing: [], packing: [], extras: [],
       design_charge: 0, margin_pct: st.default_margin_pct, gst_pct: st.gst_pct, discount: 0,
     },
   };
@@ -203,6 +208,7 @@ export async function renderQuoteEditor(view, id) {
   const sp = S.spec;
   sp.components = sp.components || [];
   sp.finishing = sp.finishing || [];
+  sp.packing = sp.packing || [];
   sp.extras = sp.extras || [];
   for (const c of sp.components) { if (!c.part) c.part = "text"; if (!c.uid) c.uid = uid(); }
   for (const k of ["design_charge", "discount"]) if (sp[k] == null) sp[k] = 0;
@@ -264,8 +270,8 @@ export async function renderQuoteEditor(view, id) {
   });
 
   const preset = select(PRESETS, "", { "aria-label": "Size preset" });
-  const wIn = bind(S.spec, "size_w", input("number", S.spec.size_w, { step: "0.01", min: "0.1" }));
-  const hIn = bind(S.spec, "size_h", input("number", S.spec.size_h, { step: "0.01", min: "0.1" }));
+  const wIn = bind(S.spec, "size_w", input("number", S.spec.size_w, { step: "0.1", min: "0.3" }));
+  const hIn = bind(S.spec, "size_h", input("number", S.spec.size_h, { step: "0.1", min: "0.3" }));
   preset.addEventListener("change", () => {
     if (!preset.value) return;
     const [w, hh] = preset.value.split("x");
@@ -277,7 +283,7 @@ export async function renderQuoteEditor(view, id) {
       h("div", null, field("Customer", custSelect), h("button", { class: "btn small", type: "button", onclick: newCustomer, style: { marginTop: "-.3rem", marginBottom: ".6rem" } }, "+ New customer")),
       field("Job name", bind(S, "title", input("text", S.title, { placeholder: "e.g. School magazine 2026", maxlength: 120 })))),
     h("div", { class: "row" },
-      field("Size preset", preset), field("Width (in)", wIn), field("Height (in)", hIn),
+      field("Size preset", preset), field("Width (cm)", wIn), field("Height (cm)", hIn),
       field("Copies", bind(S.spec, "copies", input("number", S.spec.copies, { min: "1", step: "1" })))),
     h("div", { class: "row" },
       field("Quotation date", bind(S, "quote_date", input("date", S.quote_date)), "Blank = today"),
@@ -306,7 +312,7 @@ export async function renderQuoteEditor(view, id) {
         h("div", { class: "row" },
           field("Colour", sel("color_mode", COLOR_MODES)), field("Machine", sel("machine_id", opts(M.machines), true)),
           machine && machine.needs_plate ? field("Plate type", sel("plate_id", opts(M.plates))) : null,
-          field("Pages per sheet side", upsEl, ((M.papers.find((x) => x.id == p.paper_id) || {}).width_in > 0) ? "Leave blank to calculate" : "Required: this paper has no sheet size"),
+          field("Pages per sheet side", upsEl, ((M.papers.find((x) => x.id == p.paper_id) || {}).width_cm > 0) ? "Leave blank to calculate" : "Required: this paper has no sheet size"),
           field("Wastage %", bind(p, "wastage_pct", input("number", p.wastage_pct, { min: "0", step: "0.5", placeholder: st.wastage_pct })))),
       ));
     });
@@ -323,7 +329,7 @@ export async function renderQuoteEditor(view, id) {
   function renderFinishing() {
     clear(finBox);
     const groups = {};
-    M.finishing.forEach((f) => (groups[f.group_name] = groups[f.group_name] || []).push(f));
+    M.finishing.filter((f) => f.group_name !== "Packing").forEach((f) => (groups[f.group_name] = groups[f.group_name] || []).push(f));
     Object.entries(groups).forEach(([g, items]) => {
       add(finBox, h("div", { class: "fingroup" }, h("h3", null, g), h("div", { class: "fingrid" }, items.map((f) => {
         const line = S.spec.finishing.find((x) => String(x.finishing_id) === String(f.id));
@@ -352,6 +358,32 @@ export async function renderQuoteEditor(view, id) {
   renderFinishing();
   const finCard = h("div", { class: "card" }, h("h2", null, "Binding & finishing"), finBox,
     h("p", { class: "help" }, "Tick what the job needs. Leave the quantity blank to work it out automatically (copies, or the sheets / leaves of the parts you choose). For folding, creasing or pasting pick which part it applies to, and set Times for several folds."));
+
+  // ---- packing (finishing-master items in the group "Packing")
+  const packBox = h("div");
+  function renderPacking() {
+    clear(packBox);
+    const items = M.finishing.filter((f) => f.group_name === "Packing");
+    if (!items.length) return add(packBox, h("p", { class: "muted" }, "No packing items set up yet. Add them in Rate master → Finishing with the group name Packing."));
+    add(packBox, h("div", { class: "fingrid" }, items.map((f) => {
+      const line = S.spec.packing.find((x) => String(x.finishing_id) === String(f.id));
+      const cb = h("input", { type: "checkbox", checked: !!line });
+      cb.addEventListener("change", () => {
+        if (cb.checked) S.spec.packing.push({ finishing_id: f.id, per_pack: "", qty: "", note: "" });
+        else S.spec.packing = S.spec.packing.filter((x) => String(x.finishing_id) !== String(f.id));
+        renderPacking(); changed();
+      });
+      const info = [];
+      if (line && f.basis === "per_unit") {
+        info.push(h("label", { class: "small muted" }, "Copies per pack ", bind(line, "per_pack", input("number", line.per_pack ?? "", { min: "1", step: "1", placeholder: "e.g. 250", "aria-label": `${f.name} copies per pack`, style: "width:6rem" }))));
+        info.push(h("label", { class: "small muted" }, "or packs ", bind(line, "qty", input("number", line.qty ?? "", { min: "0", step: "any", placeholder: "count", "aria-label": `${f.name} number of packs`, style: "width:5rem" }))));
+      }
+      return h("div", { class: "finsel" }, h("label", { class: "check" }, cb, f.name, h("span", { class: "small muted" }, ` · ${money(f.rate)} ${BASIS[f.basis]}`)), info.length ? h("div", { class: "fininfo" }, info) : null);
+    })));
+  }
+  renderPacking();
+  const packCard = h("div", { class: "card" }, h("h2", null, "Packing"), packBox,
+    h("p", { class: "help" }, "For cartons and bundles, enter how many copies go in one pack and the number of packs is worked out (1000 copies at 250 per carton = 4 cartons), or type the number of packs yourself. Other items are charged per copy or per job."));
 
   // ---- charges & pricing
   const extrasBox = h("div");
@@ -393,7 +425,7 @@ export async function renderQuoteEditor(view, id) {
       h("div", { class: "actions" }, h("a", { class: "btn", href: id ? `#/quotes/${id}` : "#/quotes" }, "Cancel"), saveBtn)),
     state.settings.rates_confirmed !== "1" ? h("div", { class: "banner" }, "Rates are still sample values: prices shown are for trying the app out only.") : "",
     h("div", { class: "cols two" },
-      h("div", null, jobCard, partsCard, finCard, priceCard),
+      h("div", null, jobCard, partsCard, finCard, packCard, priceCard),
       h("div", { class: "card sticky", "aria-live": "polite" }, h("h2", null, "Estimate"), estBody)));
   runEstimate();
 }

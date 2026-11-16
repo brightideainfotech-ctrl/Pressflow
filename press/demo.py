@@ -52,7 +52,7 @@ def seed(db_path: str | None = None) -> None:
         ]
 
         magazine = dict(
-            size_w=5.83, size_h=8.27, copies=500, margin_pct=25,
+            size_w=14.8, size_h=21, copies=500, margin_pct=25,
             components=[
                 dict(name="Cover", part="cover", paper_id=pid("Art Card 250"), pages=4, color_mode="multi",
                      machine_id=mid("Komori"), plate_id=plate),
@@ -63,13 +63,13 @@ def seed(db_path: str | None = None) -> None:
             design_charge=1500,
         )
         cards = dict(
-            size_w=3.5, size_h=2, copies=1000, margin_pct=30,
+            size_w=9, size_h=5.5, copies=1000, margin_pct=30,
             components=[dict(name="Card", paper_id=pid("Art Card 250"), pages=2, color_mode="multi",
                              machine_id=mid("Komori"), plate_id=plate)],
             finishing=[dict(finishing_id=fid("Lamination Matt - both sides"))],
         )
         booklets = dict(
-            size_w=8.27, size_h=11.69, copies=2000, margin_pct=20,
+            size_w=21, size_h=29.7, copies=2000, margin_pct=20,
             components=[
                 dict(name="Cover", part="cover", paper_id=pid("Maplitho 80 gsm 23x36"), pages=4, color_mode="two",
                      machine_id=mid("HMT 2 Color"), plate_id=plate),
@@ -85,7 +85,7 @@ def seed(db_path: str | None = None) -> None:
         call("POST", f"/api/quotations/{q2['id']}/status", dict(status="sent"))
 
         reel = dict(
-            size_w=5.5, size_h=8.5, copies=3000, margin_pct=20,
+            size_w=14, size_h=21.6, copies=3000, margin_pct=20,
             components=[
                 dict(name="Cover", part="cover", paper_id=pid("Art Card 250"), pages=4, color_mode="multi",
                      machine_id=mid("Komori"), plate_id=plate),
@@ -97,9 +97,9 @@ def seed(db_path: str | None = None) -> None:
         own = call("POST", "/api/papers", dict(name="Newsprint (own weights)", pricing="kg", rate_per_kg=48, weight_mode="table"))
         conn.commit()
         api.handle(conn, "PUT", f"/api/papers/{own['id']}/sizes", {}, {"sizes": [
-            {"name": "A4", "width_in": 8.27, "height_in": 11.69, "kg_per_100": 0.28},
-            {"name": "A5", "width_in": 5.83, "height_in": 8.27, "kg_per_100": 0.14},
-            {"name": "Demy 1/8", "width_in": 5.5, "height_in": 8.5, "kg_per_100": 0.14}]}, token, "demo")
+            {"name": "A4", "width_cm": 21, "height_cm": 29.7, "kg_per_100": 0.28},
+            {"name": "A5", "width_cm": 14.8, "height_cm": 21, "kg_per_100": 0.14},
+            {"name": "Demy 1/8", "width_cm": 14, "height_cm": 21.6, "kg_per_100": 0.14}]}, token, "demo")
         conn.commit()
         q4 = call("POST", "/api/quotations", dict(customer_id=customers[0]["id"], title="Exam workbooks (reel paper)", spec=reel))
         uid = lambda u: conn.execute("SELECT id FROM users WHERE username=?", (u,)).fetchone()["id"]  # noqa: E731

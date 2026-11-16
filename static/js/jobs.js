@@ -116,6 +116,7 @@ function workOrderSheet(job, showMoney) {
   const matchedBinding = new Set();
   BINDING_FORM.forEach(([, rx], i) => binding.forEach((b, j) => { if (rx.test(b)) matchedBinding.add(j); }));
   const others = (w.binding || []).filter((_, j) => !matchedBinding.has(j)).concat(w.extras || []);
+  const packing = w.packing || [];
   const p = w.pages || {};
   const line = (label, value) => h("div", null, h("strong", null, label + ": "), value || "");
   const checks = (list, src) => h("div", { class: "checks" }, list.map(([label, rx]) => h("span", null, mark(src.some((x) => rx.test(x))) + " " + label)));
@@ -136,7 +137,7 @@ function workOrderSheet(job, showMoney) {
     line("Plates", ["Polymaster", "Laser"].map((n) => `${mark((w.plates || []).some((x) => x.toLowerCase().includes(n.toLowerCase())))} ${n}`).join("   ")),
     line("Design by Press", w.design ? "Yes" : "No"), line("Name of Designer", job.designer),
     h("div", { class: "bar" }, "TYPE OF MACHINE"), checks(MACHINE_FORM, machines),
-    h("div", { class: "bar" }, "BINDING INSTRUCTIONS"), checks(BINDING_FORM, binding), line("Others", others.join(", ")),
+    h("div", { class: "bar" }, "BINDING INSTRUCTIONS"), checks(BINDING_FORM, binding), line("Packing", packing.join(", ")), line("Others", others.join(", ")),
     h("div", { style: { marginTop: ".6rem" } }, line("OK for Delivery", mark(job.ok_for_delivery)),
       showMoney ? [line("Advance Rs", job.advance ? money(job.advance) : ""), line("Receipt No", job.receipt_no), line("Bill No / Delivery Note No", job.bill_no)] : null),
     h("div", { class: "box" }, h("strong", null, "Extra Details: "), job.extra_details || ""),
@@ -244,6 +245,7 @@ export async function renderJobView(view, id) {
       h("dt", null, "Machines"), h("dd", null, (w.machines || []).join(", ") || "—"),
       h("dt", null, "Plates"), h("dd", null, (w.plates || []).join(", ") || "—"),
       h("dt", null, "Binding / finishing"), h("dd", null, (w.binding || []).join(", ") || "None"),
+      w.packing && w.packing.length ? [h("dt", null, "Packing"), h("dd", null, w.packing.join(", "))] : null,
       w.extras && w.extras.length ? [h("dt", null, "Also"), h("dd", null, w.extras.join(", "))] : null,
       h("dt", null, "Designer"), h("dd", null, job.designer || (w.design ? "Design by press" : "—")),
       h("dt", null, "Extra details"), h("dd", { style: { whiteSpace: "pre-wrap" } }, job.extra_details || "—")),

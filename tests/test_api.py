@@ -199,9 +199,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn("overdue", d)
         s, d = self.call("GET", "/api/dashboard", token=op)
         self.assertNotIn("quotes", d)
-        s, p = self.call("POST", "/api/papers", {"name": "X", "width_in": 0, "height_in": 10, "rate_per_ream": 5}, token=boss)
+        s, p = self.call("POST", "/api/papers", {"name": "X", "width_cm": 0, "height_cm": 10, "rate_per_ream": 5}, token=boss)
         self.assertEqual(s, 422)
-        s, p = self.call("POST", "/api/papers", {"name": "Tmp paper", "width_in": 10, "height_in": 10, "rate_per_ream": 5}, token=boss)
+        s, p = self.call("POST", "/api/papers", {"name": "Tmp paper", "width_cm": 10, "height_cm": 10, "rate_per_ream": 5}, token=boss)
         self.assertEqual(s, 201)
         self.assertEqual(self.call("DELETE", f"/api/papers/{p['id']}", token=boss)[1]["deactivated"], True)
         ids = [x["id"] for x in self.call("GET", "/api/papers", token=boss)[1]]
@@ -221,21 +221,21 @@ class ApiTests(unittest.TestCase):
     # ---------------------------------------------------------- reel paper, assignment, stock
     def test_kg_paper_costing(self):
         boss = self.boss()
-        s, p = self.call("POST", "/api/papers", {"name": "Reel A", "gsm": 0, "width_in": 23, "height_in": 36,
+        s, p = self.call("POST", "/api/papers", {"name": "Reel A", "gsm": 0, "width_cm": 58.4, "height_cm": 91.4,
                                                  "pricing": "kg", "rate_per_kg": 80}, token=boss)
         self.assertEqual(s, 422)  # needs GSM
-        s, p = self.call("POST", "/api/papers", {"name": "Reel A", "gsm": 70, "width_in": 23, "height_in": 36,
+        s, p = self.call("POST", "/api/papers", {"name": "Reel A", "gsm": 70, "width_cm": 58.4, "height_cm": 91.4,
                                                  "pricing": "kg", "rate_per_kg": 80}, token=boss)
         self.assertEqual(s, 201, p)
         m = self.call("GET", "/api/machines", token=boss)[1][0]
         pl = self.call("GET", "/api/plates", token=boss)[1][0]
-        spec = {"size_w": 5.5, "size_h": 8.5, "copies": 1000, "margin_pct": 0, "gst_pct": 0, "wastage_pct": 0,
+        spec = {"size_w": 14, "size_h": 21.6, "copies": 1000, "margin_pct": 0, "gst_pct": 0, "wastage_pct": 0,
                 "components": [{"name": "Text", "part": "text", "paper_id": p["id"], "pages": 32, "color_mode": "bw",
                                 "machine_id": m["id"], "plate_id": pl["id"]}]}
         s, r = self.call("POST", "/api/estimate", {"spec": spec}, token=boss)
         self.assertEqual(s, 200, r)
         comp = r["components"][0]
-        kg = comp["sheets_gross"] * 23 * 36 * 0.00064516 * 70 / 1000
+        kg = comp["sheets_gross"] * 58.4 * 91.4 * 0.0001 * 70 / 1000
         self.assertAlmostEqual(comp["paper_kg"], kg, places=2)
         self.assertAlmostEqual(comp["paper_cost"], kg * 80, delta=0.5)
         self.assertEqual(comp["paper_basis"], "kg")
@@ -244,43 +244,43 @@ class ApiTests(unittest.TestCase):
         boss = self.boss()
         s, p = self.call("POST", "/api/papers", {"name": "Roll B", "gsm": 70, "pricing": "kg", "rate_per_kg": 90}, token=boss)
         self.assertEqual(s, 201, p)
-        self.assertEqual(self.call("POST", "/api/papers", {"name": "Bad", "gsm": 70, "width_in": 20, "pricing": "kg", "rate_per_kg": 9}, token=boss)[0], 422)
+        self.assertEqual(self.call("POST", "/api/papers", {"name": "Bad", "gsm": 70, "width_cm": 20, "pricing": "kg", "rate_per_kg": 9}, token=boss)[0], 422)
         self.assertEqual(self.call("POST", "/api/papers", {"name": "Bad2", "pricing": "ream", "rate_per_ream": 9}, token=boss)[0], 422)
         m = self.call("GET", "/api/machines", token=boss)[1][0]
         pl = self.call("GET", "/api/plates", token=boss)[1][0]
         part = {"name": "Text", "part": "text", "paper_id": p["id"], "pages": 100, "color_mode": "bw", "machine_id": m["id"], "plate_id": pl["id"]}
-        spec = {"size_w": 8.27, "size_h": 11.69, "copies": 1, "margin_pct": 0, "gst_pct": 0, "wastage_pct": 0, "components": [part]}
+        spec = {"size_w": 21, "size_h": 29.7, "copies": 1, "margin_pct": 0, "gst_pct": 0, "wastage_pct": 0, "components": [part]}
         self.assertEqual(self.call("POST", "/api/estimate", {"spec": spec}, token=boss)[0], 422)  # needs pages per sheet side
         part["ups"] = 1
         s, r = self.call("POST", "/api/estimate", {"spec": spec}, token=boss)
         self.assertEqual(s, 200, r)
         c = r["components"][0]
         self.assertTrue(c["paper_by_area"])
-        # 1 up per sheet side: area printed = sheets x 8.27 x 11.69 in2 at 70 gsm
-        self.assertAlmostEqual(c["paper_kg"], c["sheets_gross"] * 8.27 * 11.69 * 0.00064516 * 70 / 1000, places=2)
+        # 1 up per sheet side: area printed = sheets x 21 x 29.7 cm2 at 70 gsm
+        self.assertAlmostEqual(c["paper_kg"], c["sheets_gross"] * 21 * 29.7 * 0.0001 * 70 / 1000, places=2)
 
     def test_paper_weight_table(self):
         boss = self.boss()
         s, p = self.call("POST", "/api/papers", {"name": "Own weights", "pricing": "kg", "rate_per_kg": 50, "weight_mode": "table"}, token=boss)
         self.assertEqual(s, 201, p)  # no GSM needed in table mode
         self.assertEqual(self.call("PUT", f"/api/papers/{p['id']}/sizes", {"sizes": [
-            {"name": "A4", "width_in": 8.27, "height_in": 11.69, "kg_per_100": 0.45},
-            {"name": "A4 again", "width_in": 11.69, "height_in": 8.27, "kg_per_100": 0.5}]}, token=boss)[0], 422)  # duplicate size
+            {"name": "A4", "width_cm": 21, "height_cm": 29.7, "kg_per_100": 0.45},
+            {"name": "A4 again", "width_cm": 29.7, "height_cm": 21, "kg_per_100": 0.5}]}, token=boss)[0], 422)  # duplicate size
         s, sizes = self.call("PUT", f"/api/papers/{p['id']}/sizes", {"sizes": [
-            {"name": "A4", "width_in": 8.27, "height_in": 11.69, "kg_per_100": 0.45}]}, token=boss)
+            {"name": "A4", "width_cm": 21, "height_cm": 29.7, "kg_per_100": 0.45}]}, token=boss)
         self.assertEqual((s, len(sizes)), (200, 1))
         self.assertEqual(self.call("PUT", f"/api/papers/{p['id']}/sizes", {"sizes": []}, token=self.role("desk"))[0], 403)
         m = self.call("GET", "/api/machines", token=boss)[1][0]
         pl = self.call("GET", "/api/plates", token=boss)[1][0]
         part = {"name": "Text", "part": "text", "paper_id": p["id"], "pages": 100, "color_mode": "bw", "machine_id": m["id"], "plate_id": pl["id"], "ups": 1}
-        spec = {"size_w": 8.27, "size_h": 11.69, "copies": 1, "margin_pct": 0, "gst_pct": 0, "wastage_pct": 0, "components": [part]}
+        spec = {"size_w": 21, "size_h": 29.7, "copies": 1, "margin_pct": 0, "gst_pct": 0, "wastage_pct": 0, "components": [part]}
         s, r = self.call("POST", "/api/estimate", {"spec": spec}, token=boss)
         self.assertEqual(s, 200, r)
         c = r["components"][0]
         self.assertEqual(c["paper_weight_src"], "table")
         self.assertAlmostEqual(c["paper_kg"], c["sheets_gross"] * 0.45 / 100, places=3)
         self.assertAlmostEqual(c["paper_cost"], c["paper_kg"] * 50, delta=0.05)
-        spec["size_w"], spec["size_h"] = 5.83, 8.27  # A5 is not in the table
+        spec["size_w"], spec["size_h"] = 14.8, 21.0  # A5 is not in the table
         s, r = self.call("POST", "/api/estimate", {"spec": spec}, token=boss)
         self.assertEqual(s, 422)
         self.assertIn("no weight is entered", r["error"])
@@ -342,3 +342,32 @@ class ApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InchToCmMigrationTests(unittest.TestCase):
+    def test_old_inch_database_is_converted_once(self):
+        import sqlite3, tempfile, os
+        from press import db
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "old.db")
+            c = sqlite3.connect(path)
+            c.executescript("""
+                CREATE TABLE papers(id INTEGER PRIMARY KEY, name TEXT, gsm INTEGER, width_in REAL NOT NULL, height_in REAL NOT NULL, rate_per_ream REAL);
+                INSERT INTO papers(name,gsm,width_in,height_in,rate_per_ream) VALUES('Old',80,23,36,1750);
+                CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                INSERT INTO settings VALUES('bleed_in','0.125'),('gripper_in','0.5');
+                CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE quotations(id INTEGER PRIMARY KEY, spec_json TEXT, result_json TEXT);
+                INSERT INTO quotations VALUES(1, '{"size_w": 5.83, "size_h": 8.27}', '{"size_w": 5.83}');
+            """)
+            c.commit(); c.close()
+            conn = db.connect(path)
+            db._inches_to_cm(conn); db._inches_to_cm(conn)  # second call must not convert again
+            row = conn.execute("SELECT width_cm,height_cm FROM papers").fetchone()
+            self.assertEqual((row["width_cm"], row["height_cm"]), (58.42, 91.44))
+            st = dict(conn.execute("SELECT key,value FROM settings").fetchall())
+            self.assertEqual(st["bleed_cm"], "0.32"); self.assertNotIn("bleed_in", st)
+            q = conn.execute("SELECT spec_json, result_json FROM quotations").fetchone()
+            self.assertEqual(json.loads(q["spec_json"])["size_w"], 14.81)
+            self.assertEqual(json.loads(q["result_json"])["unit"], "in")  # stored result stays labelled as inches
+            conn.close()
