@@ -194,7 +194,7 @@ export function formModal({ title, fields, values = {}, submitText = "Save", onS
   const rows = fields.map((f) => {
     let el;
     const v = values[f.key];
-    if (f.type === "select") el = select(f.options, v, { required: f.required });
+    if (f.type === "select") el = select(f.options, v, { required: f.required, searchable: f.searchable });
     else if (f.type === "checkbox") el = h("input", { type: "checkbox", checked: v === undefined ? !!f.default : !!v });
     else if (f.type === "textarea") el = h("textarea", { value: v ?? "" });
     else if (f.type === "custom") el = f.render(values);

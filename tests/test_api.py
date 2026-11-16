@@ -318,10 +318,11 @@ class ApiTests(unittest.TestCase):
         iid = it["id"]
         self.assertEqual(self.call("POST", "/api/stock", {"name": "x", "unit": "kg"}, token=op)[0], 403)
         self.assertEqual(self.call("POST", f"/api/stock/{iid}/move", {"kind": "receive", "qty": 5}, token=op)[0], 403)
-        s, it = self.call("POST", f"/api/stock/{iid}/move", {"kind": "issue", "qty": 45}, token=op)
+        self.assertEqual(self.call("POST", f"/api/stock/{iid}/move", {"kind": "issue", "qty": 1}, token=op)[0], 403)  # floor staff must request
+        s, it = self.call("POST", f"/api/stock/{iid}/move", {"kind": "issue", "qty": 45}, token=desk)
         self.assertEqual((s, it["on_hand"], it["low"]), (200, 5, True))
-        self.assertEqual(self.call("POST", f"/api/stock/{iid}/move", {"kind": "issue", "qty": 6}, token=op)[0], 409)
-        self.assertEqual(self.call("POST", f"/api/stock/{iid}/move", {"kind": "issue", "qty": -1}, token=op)[0], 422)
+        self.assertEqual(self.call("POST", f"/api/stock/{iid}/move", {"kind": "issue", "qty": 6}, token=desk)[0], 409)
+        self.assertEqual(self.call("POST", f"/api/stock/{iid}/move", {"kind": "issue", "qty": -1}, token=desk)[0], 422)
         self.assertEqual(self.call("POST", f"/api/stock/{iid}/move", {"kind": "adjust", "counted": 7}, token=desk)[0], 422)  # needs reason
         s, it = self.call("POST", f"/api/stock/{iid}/move", {"kind": "adjust", "counted": 7, "note": "recount"}, token=desk)
         self.assertEqual(it["on_hand"], 7)

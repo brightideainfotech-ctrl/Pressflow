@@ -1,6 +1,6 @@
 // Standard paper sizes (cm), shared by the Rate master screens. Anything else is entered as a custom size.
 import { state } from "./api.js";
-import { h, input, select } from "./ui.js";
+import { h, input, select, num, money } from "./ui.js";
 
 const FALLBACK_SIZES = [
   ["A0", 84.1, 118.9], ["A1", 59.4, 84.1], ["A2", 42, 59.4], ["A3", 29.7, 42], ["A4", 21, 29.7],
@@ -78,4 +78,31 @@ export function weightsEditor(initial) {
   el.getValue = () => rows.filter((r) => r.width_cm || r.height_cm || r.kg_per_100)
     .map((r) => ({ name: r.name || sizeNameFor(Number(r.width_cm), Number(r.height_cm)) || "Custom", width_cm: Number(r.width_cm), height_cm: Number(r.height_cm), kg_per_100: Number(r.kg_per_100) }));
   return el;
+}
+
+
+/**
+ * Best-sheet-size table. parts: from /api/suggest-sizes. opts: {money: show paper cost, onApply(part, option)}.
+ * The lowest wastage comes first; a size the part already uses is marked.
+ */
+export function sizeSuggestions(parts, { money: showMoney = false, onApply } = {}) {
+  if (!parts.length) return h("p", { class: "muted small" }, "Nothing to suggest yet.");
+  return h("div", null, parts.map((p) => {
+    const best = p.best, cur = p.current;
+    const saving = best && cur && !best.is_current && cur.paper_cost != null && best.paper_cost != null ? cur.paper_cost - best.paper_cost : null;
+    const verdict = !best ? "No sheet size in your master fits this page size."
+      : best.is_current ? `The sheet already used (${cur.name}) is the best fit: ${best.utilisation_pct}% of it is used.`
+      : cur ? `${best.name} wastes ${best.waste_pct}% against ${cur.waste_pct}% on ${cur.name}.` + (saving > 0.5 && showMoney ? ` Paper could cost about ₹${num(Math.round(saving))} less.` : "")
+      : `Best fit: ${best.name}, ${best.utilisation_pct}% of the sheet used.`;
+    return h("div", { class: "sizesug" }, h("div", { class: "small" }, h("b", null, p.name), ` · ${p.paper}`),
+      h("div", { class: "small muted", style: { margin: ".15rem 0 .4rem" } }, verdict),
+      p.options.length ? h("div", { class: "tablewrap" }, h("table", null,
+        h("thead", null, h("tr", null, ["Sheet", "Ups", "Used", "Waste", "Sheets", showMoney ? "Paper cost" : null, onApply ? "" : null].filter((x) => x !== null).map((t, i) => h("th", { class: i >= 1 && i <= 5 ? "num" : "" }, t)))),
+        h("tbody", null, p.options.map((o, i) => h("tr", { class: i === 0 ? "best" : "" },
+          h("td", null, h("b", null, o.name), h("div", { class: "small muted" }, `${o.width_cm} × ${o.height_cm} cm`), o.is_current ? h("span", { class: "badge s-plates" }, "in use") : null, i === 0 ? [" ", h("span", { class: "badge s-ready" }, "least waste")] : null),
+          h("td", { class: "num" }, o.ups), h("td", { class: "num" }, o.utilisation_pct + "%"), h("td", { class: "num" }, o.waste_pct + "%"),
+          h("td", { class: "num" }, o.sheets == null ? "—" : num(o.sheets)),
+          showMoney ? h("td", { class: "num" }, o.paper_cost == null ? "—" : money(o.paper_cost)) : null,
+          onApply ? h("td", { class: "right" }, o.is_current ? null : h("button", { class: "btn small", type: "button", onclick: () => onApply(p, o) }, "Use this size")) : null))))) : null);
+  }));
 }

@@ -415,3 +415,59 @@ def estimate(spec: dict, masters: dict, settings: dict, quantities=None) -> dict
         breaks.append({"copies": q, "cost": t["cost"], "pre_tax": t["pre_tax"], "total": t["total"], "per_copy": t["per_copy"]})
     result["breaks"] = breaks
     return result
+
+
+def suggest_sizes(spec: dict, M: dict, S: dict, extra_sizes=(), top: int = 6) -> list:
+    """For every printed part, rank candidate sheet sizes by how little paper is wasted.
+
+    Candidates are the sizes in the Sheet size master plus the sheet size of every paper in the Rate master.
+    For each one the part is re-priced on a copy of the part's own paper (same GSM, rate scaled by sheet area)
+    so the sheet count and paper cost are comparable. Utilisation = area of the finished pages that fit on one
+    sheet / sheet area; waste is the rest (trim, bleed, gripper and leftover strips).
+    """
+    copies = int(_f(spec.get("copies"), "Copies", lo=1, hi=10_000_000))
+    w = _f(spec.get("size_w"), "Finished width", lo=0.3, hi=500)
+    h = _f(spec.get("size_h"), "Finished height", lo=0.3, hi=500)
+    bleed = _f(S.get("bleed_cm"), "Bleed", lo=0, default=0.3)
+    gripper = _f(S.get("gripper_cm"), "Gripper", lo=0, default=1.0)
+
+    cands: dict = {}
+    for name, cw, ch in extra_sizes:
+        cands.setdefault((round(cw, 1), round(ch, 1)), name)
+    for p in M["papers"].values():
+        if p.get("active", 1) and p["width_cm"] > 0 and p["height_cm"] > 0:
+            cands.setdefault((round(p["width_cm"], 1), round(p["height_cm"], 1)), f"{p['width_cm']:g} x {p['height_cm']:g} cm")
+
+    out = []
+    for comp in spec.get("components") or []:
+        paper = M["papers"].get(int(comp.get("paper_id") or 0))
+        if not paper:
+            continue
+        cur = (paper["width_cm"], paper["height_cm"])
+        options = []
+        for (cw, ch), nm in cands.items():
+            ups = compute_ups(w, h, cw, ch, bleed, gripper)
+            if ups < 1:
+                continue
+            util = ups * w * h / (cw * ch) * 100.0
+            opt = {"name": nm, "width_cm": cw, "height_cm": ch, "ups": ups, "utilisation_pct": round(util, 1),
+                   "waste_pct": round(100 - util, 1), "sheets": None, "paper_cost": None,
+                   "is_current": abs(cw - cur[0]) < 0.15 and abs(ch - cur[1]) < 0.15 or
+                                 abs(cw - cur[1]) < 0.15 and abs(ch - cur[0]) < 0.15}
+            fake = dict(paper, id=-1, width_cm=cw, height_cm=ch, weight_mode="auto", sizes=[])
+            if paper["width_cm"] > 0 and paper["height_cm"] > 0:
+                fake["rate_per_ream"] = (paper.get("rate_per_ream") or 0) * (cw * ch) / (paper["width_cm"] * paper["height_cm"])
+            try:
+                r = _component(dict(comp, paper_id=-1, ups=None), copies, w, h, {**M, "papers": {**M["papers"], -1: fake}}, S)
+                opt["sheets"] = r["sheets_gross"]
+                opt["paper_cost"] = r["paper_cost"]
+            except EstimateError:
+                pass
+            options.append(opt)
+        options.sort(key=lambda o: (-o["utilisation_pct"], o["paper_cost"] if o["paper_cost"] is not None else 1e18))
+        best = options[0] if options else None
+        current = next((o for o in options if o["is_current"]), None)
+        out.append({"uid": comp.get("uid", ""), "name": str(comp.get("name") or comp.get("part") or "Part"),
+                    "paper": paper["name"], "pages": comp.get("pages"),
+                    "current": current, "best": best, "options": options[:top]})
+    return out

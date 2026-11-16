@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS users(
   id INTEGER PRIMARY KEY,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
   name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('manager','desk','superintendent','operator')),
+  role TEXT NOT NULL CHECK(role IN ('manager','desk','superintendent','operator','storekeeper')),
   salt TEXT NOT NULL,
   pw_hash TEXT NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
@@ -221,6 +222,33 @@ CREATE TABLE IF NOT EXISTS stock_moves(
 );
 CREATE INDEX IF NOT EXISTS idx_moves_item ON stock_moves(item_id);
 CREATE INDEX IF NOT EXISTS idx_moves_job ON stock_moves(job_id);
+CREATE TABLE IF NOT EXISTS material_requests(
+  id INTEGER PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  job_id INTEGER NOT NULL REFERENCES jobs(id),
+  item_id INTEGER REFERENCES stock_items(id),
+  paper_id INTEGER,
+  sheets REAL NOT NULL DEFAULT 0,
+  kg REAL NOT NULL DEFAULT 0,
+  name TEXT NOT NULL,
+  unit TEXT NOT NULL DEFAULT '',
+  qty REAL NOT NULL,
+  qty_issued REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('awaiting_approval','pending','partial','issued','rejected','cancelled')),
+  kind TEXT NOT NULL DEFAULT 'initial' CHECK(kind IN ('initial','additional')),
+  reason TEXT NOT NULL DEFAULT '',
+  requested_by INTEGER REFERENCES users(id),
+  requested_at TEXT NOT NULL,
+  decided_by INTEGER REFERENCES users(id),
+  decided_at TEXT NOT NULL DEFAULT '',
+  decision_note TEXT NOT NULL DEFAULT '',
+  issued_by INTEGER REFERENCES users(id),
+  issued_at TEXT NOT NULL DEFAULT '',
+  store_note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_mreq_job ON material_requests(job_id);
+CREATE INDEX IF NOT EXISTS idx_mreq_status ON material_requests(status);
 CREATE TABLE IF NOT EXISTS invoices(
   id INTEGER PRIMARY KEY,
   kind TEXT NOT NULL CHECK(kind IN ('sale','purchase')),
@@ -341,7 +369,28 @@ def _inches_to_cm(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('units_cm','1')")
 
 
+def _allow_storekeeper(conn: sqlite3.Connection) -> None:
+    """Older databases restrict users.role to four values; rebuild the table once to allow 'storekeeper'."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+    if not row or "storekeeper" in row["sql"]:
+        return
+    new_sql = re.sub(r"CREATE TABLE\s+(IF NOT EXISTS\s+)?\"?users\"?", "CREATE TABLE users_new", row["sql"], count=1)
+    new_sql = new_sql.replace("'operator')", "'operator','storekeeper')")
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("DROP TABLE IF EXISTS users_new")
+        conn.execute(new_sql)
+        conn.execute("INSERT INTO users_new SELECT * FROM users")
+        conn.execute("DROP TABLE users")
+        conn.execute("ALTER TABLE users_new RENAME TO users")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
 def migrate(conn: sqlite3.Connection) -> None:
+    _allow_storekeeper(conn)
     _inches_to_cm(conn)
     for table, col, ddl in MIGRATIONS:
         have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}

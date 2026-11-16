@@ -1,6 +1,6 @@
 import { state, get, post, put, del, loadBootstrap } from "./api.js";
-import { sizeList, sizeLabel } from "./sizes.js";
-import { h, add, clear, badge, field, input, select, formModal, toast, fail, money, money0, num, fmtDate, todayStr,
+import { sizeList, sizeLabel, sizeSuggestions } from "./sizes.js";
+import { modal, h, add, clear, badge, field, input, select, formModal, toast, fail, money, money0, num, fmtDate, todayStr,
          debounce, confirmBox, emptyState, logoImg, printHeader } from "./ui.js";
 
 const COLOR_MODES = [["multi", "Multi-colour (4)"], ["two", "2 colour"], ["single", "Single colour"], ["bw", "Black & white"]];
@@ -286,6 +286,27 @@ export async function renderQuoteEditor(view, id) {
       field("Valid until", bind(S, "valid_until", input("date", S.valid_until)), `Blank = ${st.quote_valid_days} days after the date`)),
     field("Notes (printed on the quotation)", bind(S, "notes", h("textarea", { value: S.notes }))));
 
+  // ---- best sheet size for a part
+  const bestSize = async (p) => {
+    let r;
+    try { r = await post("/api/suggest-sizes", payloadSpec()); } catch (e) { return fail(e); }
+    const mine = r.parts.filter((x) => x.uid === p.uid);
+    const m = modal("Best sheet size", h("div", null,
+      h("p", { class: "small muted" }, "Sheet sizes ranked by how little paper is wasted for this page size. Paper cost is an estimate: the same paper cut to that sheet size."),
+      sizeSuggestions(mine, {
+        money: true,
+        onApply: (part, o) => {
+          const cur = M.papers.find((x) => String(x.id) === String(p.paper_id));
+          const hit = M.papers.filter((x) => x.width_cm > 0 && Math.abs(x.width_cm - o.width_cm) < 0.15 && Math.abs(x.height_cm - o.height_cm) < 0.15
+            || Math.abs(x.width_cm - o.height_cm) < 0.15 && Math.abs(x.height_cm - o.width_cm) < 0.15);
+          const same = hit.filter((x) => cur && x.gsm === cur.gsm && x.pricing === cur.pricing);
+          const pick = same[0] || null;
+          if (!pick) { toast(hit.length ? "You have paper of that size, but not at the same GSM. Pick it in the Paper list" : `No paper of ${o.name} is in your Rate master yet. Add it under Rates > Paper`); return; }
+          p.paper_id = String(pick.id); m.close(); renderParts(); changed(); toast(`Paper changed to ${pick.name}`);
+        },
+      })));
+  };
+
   // ---- parts
   const partsBox = h("div");
   function renderParts() {
@@ -301,6 +322,7 @@ export async function renderQuoteEditor(view, id) {
       };
       add(partsBox, h("div", { class: "partcard" },
         h("div", { class: "head" }, h("strong", null, `Part ${i + 1}`),
+          h("button", { class: "btn small", type: "button", onclick: () => bestSize(p) }, "Best sheet size"),
           S.spec.components.length > 1 ? h("button", { class: "btn small danger", type: "button", onclick: () => { const [gone] = S.spec.components.splice(i, 1); S.spec.finishing.forEach((x) => { if (x.apply_to === gone.uid) x.apply_to = "all"; }); renderParts(); renderFinishing(); changed(); } }, "Remove") : null),
         h("div", { class: "row" },
           field("Type", sel("part", PARTS)), field("Name", bind(p, "name", input("text", p.name, { maxlength: 60 }))),

@@ -19,7 +19,7 @@ def seed(db_path: str | None = None) -> None:
         for username, name, role, dept in (
                 ("desk", "Front Desk", "desk", "Office"), ("super", "Superintendent", "superintendent", "Production"),
                 ("operator", "Machine Operator", "operator", "Press"), ("designer", "Mr. X (Designer)", "operator", "Design"),
-                ("binder", "Binding Section", "operator", "Binding")):
+                ("binder", "Binding Section", "operator", "Binding"), ("store", "Store Keeper", "storekeeper", "Store")):
             if not conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
                 uid = auth.create_user(conn, username, name, role, DEMO_PASSWORD)
                 conn.execute("UPDATE users SET department=? WHERE id=?", (dept, uid))
@@ -135,7 +135,8 @@ def seed(db_path: str | None = None) -> None:
         item(name="Polymaster plates", category="plates", unit="pcs", reorder_level=60, location="Plate room", opening_qty=210)
         ink = item(name="Black ink", category="ink", unit="kg", reorder_level=5, opening_qty=18)
         item(name="Matt lamination film", category="binding", unit="rolls", reorder_level=2, opening_qty=6)
-        call("POST", f"/api/stock/{reel_item['id']}/move", dict(kind="issue", qty=65, job_id=j4["id"], note="First batch to press"))
+        req = next(r for r in call("GET", "/api/store/requests") if r["job_id"] == j4["id"] and r["item_id"] == reel_item["id"])
+        call("POST", f"/api/material-requests/{req['id']}/issue", dict(qty=65, note="First batch to press"))
         call("POST", f"/api/stock/{ink['id']}/move", dict(kind="issue", qty=14, note="Month usage"))
 
         # Accounts: company state, item prices, a supplier, purchase bills, a job invoice and payments.

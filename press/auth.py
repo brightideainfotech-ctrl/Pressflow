@@ -13,7 +13,7 @@ from . import db
 PBKDF2_ITERATIONS = 200_000
 SESSION_DAYS = 7
 MIN_PASSWORD = 8
-ROLES = ("manager", "desk", "superintendent", "operator")
+ROLES = ("manager", "desk", "superintendent", "operator", "storekeeper")
 
 
 def hash_password(password: str, salt_hex: str | None = None) -> tuple[str, str]:

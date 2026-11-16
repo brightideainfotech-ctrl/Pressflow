@@ -45,7 +45,7 @@ export async function renderInventory(view) {
   const move = (it, kind) => {
     const cfg = {
       receive: { title: `Receive stock: ${it.name}`, label: `Quantity received (${it.unit})`, extra: [{ key: "ref", label: "Supplier / bill no." }] },
-      issue: { title: `Take from stock: ${it.name}`, label: `Quantity taken (${it.unit})`, extra: [{ key: "job_id", label: "For job (optional)", type: "select", options: [["", "No particular job"], ...jobOpts] }] },
+      issue: { title: `Take from stock: ${it.name}`, label: `Quantity taken (${it.unit})`, extra: [] },
       adjust: { title: `Correct the count: ${it.name}`, label: `Counted quantity now (${it.unit})`, extra: [] },
     }[kind];
     formModal({
@@ -82,7 +82,7 @@ export async function renderInventory(view) {
         h("td", { class: "num" }, i.track_stock ? [h("span", { class: i.low ? "flag" : "" }, `${num(i.on_hand)} ${i.unit}`), i.low ? h("div", { class: "small flag" }, "Low") : null] : h("span", { class: "muted" }, "not counted")),
         h("td", { class: "num" }, i.reorder_level ? `${num(i.reorder_level)} ${i.unit}` : "—"), h("td", { class: "num" }, i.sale_price ? money(i.sale_price) : "—"), h("td", null, i.gst_rate ? i.gst_rate + "%" : "—"),
         h("td", { class: "right nowrap" },
-          h("button", { class: "btn small", onclick: () => move(i, "issue") }, "Take"),
+          ["manager", "desk", "storekeeper"].includes(state.user.role) ? [h("button", { class: "btn small", onclick: () => move(i, "issue") }, "Take"), " "] : null,
           canEdit ? [" ", h("button", { class: "btn small", onclick: () => move(i, "receive") }, "Receive"), " ",
             h("button", { class: "btn small", onclick: () => move(i, "adjust") }, "Recount")] : null, " ",
           state.user.role !== "operator" ? h("button", { class: "btn small", onclick: () => history(i) }, "History") : null,

@@ -236,3 +236,9 @@ tr.total td { font-weight: 700; border-top: 2px solid var(--ink); }
 .ss-none { color: #6b7488; cursor: default; }
 .ss-opt.hi { background: #e8eefc; }
 .ss-opt.sel { font-weight: 600; }
+
+/* best sheet size */
+.sizesug { margin-bottom: .9rem; }
+.sizesug tr.best td { background: #f1faf6; }
+.sizesug table { font-size: .82rem; }
+.sizesug td, .sizesug th { padding: .35rem .4rem; }

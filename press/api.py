@@ -37,6 +37,7 @@ STAGE_PERMS = {
     "desk": {"approved", "design_proof", "ready", "delivered", "billed", "cancelled"},
     "superintendent": {"approved", "design_proof", "plates", "printing", "finishing", "ready"},
     "operator": {"design_proof", "plates", "printing", "finishing", "ready"},
+    "storekeeper": set(),
 }
 MONEY_ROLES = ("manager", "desk")
 JOB_MONEY_FIELDS = ("total", "gst_pct", "hsn", "advance", "receipt_no", "bill_no", "balance")
@@ -52,7 +53,7 @@ QUOTE_TRANSITIONS = {
 QUOTE_EDITABLE = ("draft", "sent", "rejected")
 
 ANY = "any"
-ALL_STAFF = ("manager", "desk", "superintendent", "operator")
+ALL_STAFF = ("manager", "desk", "superintendent", "operator", "storekeeper")
 OFFICE = ("manager", "desk")
 MANAGER = ("manager",)
 
@@ -708,6 +709,7 @@ def quotes_convert(c: Ctx):
     c.conn.execute("UPDATE quotations SET status='converted', job_id=?, updated_at=? WHERE id=?", (jid, now, qid))
     c.conn.execute("INSERT INTO job_events(job_id,user_id,kind,stage,note,at) VALUES(?,?,?,?,?,?)",
                    (jid, c.user["id"], "created", "approved", f"Created from quotation {q['number']}", now))
+    store.make_initial_requests(c.conn, jid, build_work(result), c.user["id"])
     if target:
         _do_assign(c, jid, target, "")
     return 201, _job_full(c.conn, jid, c.user["role"])
@@ -737,6 +739,7 @@ def _job_full(conn, jid, role):
         u = one(conn, "SELECT name, department FROM users WHERE id=?", (j["assigned_to"],))
         j["assigned_name"], j["assigned_dept"] = (u["name"], u["department"]) if u else (None, "")
     j["materials"] = _job_materials(conn, j)
+    j["material_requests"] = store.requests_for_job(conn, jid)
     return _shape_job(j, role)
 
 
@@ -835,8 +838,9 @@ def jobs_note(c: Ctx):
 # ---------------------------------------------------------------- people, assignment, progress
 
 STOCK_VIEW = ALL_STAFF
-STOCK_HISTORY = ("manager", "desk", "superintendent")
+STOCK_HISTORY = ("manager", "desk", "superintendent", "storekeeper")
 STOCK_EDIT = OFFICE
+STORE_STAFF = ("manager", "desk", "storekeeper")  # may issue / take back stock
 
 
 @route("GET", "/api/people")
@@ -969,6 +973,7 @@ def stock_create(c: Ctx):
     v = _stock_fix(clean(c.body, STOCK_FIELDS), c.conn)
     cols = [f[0] for f in STOCK_FIELDS]
     cur = c.conn.execute(f"INSERT INTO stock_items({','.join(cols)}) VALUES({','.join('?' * len(cols))})", [v[k] for k in cols])
+    store.relink(c.conn)
     iid = cur.lastrowid
     opening = c.body.get("opening_qty")
     if opening not in (None, "", 0, "0"):
@@ -987,6 +992,7 @@ def stock_update(c: Ctx):
         _stock_fix(v, c.conn)
     if v:
         c.conn.execute(f"UPDATE stock_items SET {','.join(k + '=?' for k in v)} WHERE id=?", [*v.values(), iid])
+        store.relink(c.conn)
     return _stock_row(c.conn, iid)
 
 
@@ -1017,6 +1023,8 @@ def stock_move(c: Ctx):
     role = c.user["role"]
     if kind in ("receive", "adjust") and role not in STOCK_EDIT:
         raise ApiError(403, "Only the office can receive stock or correct counts")
+    if kind in ("issue", "return") and role not in STORE_STAFF:
+        raise ApiError(403, "Material is issued by the store. Raise a material request on the job instead")
     if not item["active"]:
         raise ApiError(409, "This stock item is switched off")
     ref = str(c.body.get("ref") or "").strip()[:200]
@@ -1031,6 +1039,8 @@ def stock_move(c: Ctx):
         if not job:
             raise ApiError(422, "That job does not exist")
         job_id, jnum = job["id"], job["order_no"]
+    if job_id and kind == "issue":
+        raise ApiError(409, "Material for a job is issued from the Store screen, against a material request")
     if kind == "adjust":
         counted = clean(c.body, [("counted", "float", True)])["counted"]
         if not note:
@@ -1109,6 +1119,7 @@ def dashboard(c: Ctx):
     out["unassigned"] = one(c.conn, f"SELECT COUNT(*) n FROM jobs WHERE {openq} AND assigned_to IS NULL")["n"]
     if c.user["role"] in STOCK_VIEW:
         out["low_stock"] = [r for r in stock_list(c) if r["low"]][:10]
+    out["store"] = store.summary(c.conn, c.user)
     if c.user["role"] in OFFICE:
         out["quotes"] = {
             "draft": one(c.conn, "SELECT COUNT(*) n FROM quotations WHERE status='draft'")["n"],
@@ -1126,3 +1137,4 @@ def dashboard(c: Ctx):
 
 # Accounting (parties, sales, purchases, payments, reports) lives in its own module.
 from . import accounts  # noqa: E402,F401
+from . import store  # noqa: E402,F401

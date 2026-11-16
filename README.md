@@ -119,3 +119,12 @@ Packing items are finishing-master items in the group "Packing". On a quotation,
 * **Rate master → Sheet sizes** holds the list of named sizes (width × height in cm). Standard sizes (A0–A7, B3–B5, Letter, Legal, Demy, Crown, Royal, …) are loaded once; add your own custom sizes, edit or delete any of them.
 * The master feeds the **Size preset** on quotations, the **Sheet size** on a paper, and the size rows of a paper's own weight table.
 * Any dropdown with more than 8 choices (size presets, customers, papers, parties, stock items, states…) is a **searchable picker**: click it and type part of a name (for example `demy 1/8` or `annual`); use Up/Down and Enter, or click.
+
+## Store keeper, material requests and best sheet size
+
+* **Storekeeper role** (Users page): sees Store requests, Items & stock and the jobs (no prices). Demo login `store` / `demo-pass-1`.
+* **Confirming a job** (quotation → job) automatically sends the store one request per paper, in the stock item's own unit (kg, reams or sheets). Papers with no stock item wait until the office links one under Items & stock.
+* The **storekeeper (or manager) issues** the request on the **Store requests** screen. The stock is deducted and the job shows what was issued, by whom and when. Only the approved quantity can be issued.
+* **Asking again for material already issued to the same job** needs a reason, and stays *Needs manager's approval* until the manager authorises (and can reduce the quantity) or refuses it. Until then the store cannot issue it. A second request for the same material while one is still open is blocked.
+* Floor staff can no longer take stock directly; direct "Take" is for the manager, front desk and storekeeper, for items not tied to a job.
+* **Best sheet size**: *Best sheet size* button on each part of a quotation, and a card on every job. It ranks the sizes in the Sheet size master (plus the sheet sizes of your papers) by least wastage, with sheets and estimated paper cost, and "Use this size" switches the part to a matching paper in your Rate master (same GSM).

@@ -1,4 +1,6 @@
 import { state, get, post, put, isOffice, stageLabel } from "./api.js";
+import { requestMaterial, reqBadge } from "./store.js";
+import { sizeSuggestions } from "./sizes.js";
 import { h, add, clear, badge, field, select, formModal, toast, fail, money, num, fmtDate, fmtDateTime, debounce, emptyState, logoImg, printHeader } from "./ui.js";
 
 export const progressBar = (pct) => h("div", { class: "pbar", title: `${pct || 0}% of this stage done` }, h("span", { style: { width: `${Math.min(100, pct || 0)}%` } }));
@@ -216,23 +218,34 @@ export async function renderJobView(view, id) {
       lead || holdsIt ? h("button", { class: "btn primary", onclick: handOver }, job.assigned_name ? "Hand over to someone" : "Assign to someone") : null,
       lead || holdsIt ? h("button", { class: "btn", onclick: reportProgress }, "Update progress") : null));
 
-  // paper needed vs issued from stock
-  const issue = (m) => formModal({
-    title: `Issue ${m.item_name}`, submitText: "Issue to job", values: { qty: Math.max(0, +(m.need - m.issued).toFixed(3)) },
-    fields: [{ key: "qty", label: `Quantity taken (${m.unit})`, type: "number", step: "any", min: 0, required: true, help: `${num(m.on_hand)} ${m.unit} in stock` },
-      { key: "note", label: "Note (optional)" }],
-    onSubmit: async (v) => { await post(`/api/stock/${m.item_id}/move`, { kind: "issue", qty: v.qty, job_id: id, note: v.note }); toast("Issued"); await reload(); },
-  });
+  // paper needed vs issued, and the store requests for this job
+  const closedJob = ["delivered", "billed", "cancelled"].includes(job.stage);
+  const reqs = job.material_requests || [];
   const mats = job.materials || [];
-  const matCard = mats.length ? h("div", { class: "card no-print" }, h("h2", null, "Paper & materials"),
-    h("div", { class: "tablewrap" }, h("table", null,
-      h("thead", null, h("tr", null, ["Paper", "Needed", "Issued", "In stock", ""].map((t, i) => h("th", { class: i >= 1 && i <= 3 ? "num" : "" }, t)))),
+  const ask = (m) => requestMaterial(id, job.order_no, reload, m ? { item_id: m.item_id, qty: Math.max(0, +(m.need - m.issued).toFixed(3)) } : {});
+  const matCard = h("div", { class: "card no-print" }, h("h2", null, "Paper & materials"),
+    mats.length ? h("div", { class: "tablewrap" }, h("table", null,
+      h("thead", null, h("tr", null, ["Paper", "Needed", "Issued", "In stock"].map((t, i) => h("th", { class: i >= 1 ? "num" : "" }, t)))),
       h("tbody", null, mats.map((m) => h("tr", null,
-        h("td", null, m.paper, m.item_id ? null : h("div", { class: "small muted" }, "Not linked to a stock item", office ? [" · ", h("a", { href: "#/stock" }, "set up in Inventory")] : "")),
+        h("td", null, m.paper, m.item_id ? null : h("div", { class: "small muted" }, "Not linked to a stock item", office ? [" · ", h("a", { href: "#/stock" }, "set up in Items & stock")] : "")),
         h("td", { class: "num" }, m.item_id ? `${num(m.need)} ${m.unit}` : `${num(m.sheets)} sheets · ${m.kg} kg`),
         h("td", { class: "num" }, m.item_id ? h("span", { class: m.issued >= m.need ? "ok" : "" }, `${num(m.issued)} ${m.unit}`) : "—"),
-        h("td", { class: "num" }, m.item_id ? h("span", { class: m.on_hand < m.need - m.issued ? "flag" : "" }, `${num(m.on_hand)} ${m.unit}`) : "—"),
-        h("td", { class: "right" }, m.item_id ? h("button", { class: "btn small", onclick: () => issue(m) }, "Issue") : null))))))) : null;
+        h("td", { class: "num" }, m.item_id ? h("span", { class: m.on_hand < m.need - m.issued ? "flag" : "" }, `${num(m.on_hand)} ${m.unit}`) : "—")))))) : null,
+    reqs.length ? h("div", { class: "tablewrap", style: { marginTop: ".6rem" } }, h("table", null,
+      h("thead", null, h("tr", null, ["Store request", "Qty", "Status"].map((t, i) => h("th", { class: i === 1 ? "num" : "" }, t)))),
+      h("tbody", null, reqs.map((r) => h("tr", null,
+        h("td", null, h("b", null, r.number), " ", r.name, r.kind === "additional" ? [" ", badge("urgent", "Extra")] : null,
+          h("div", { class: "small muted" }, [fmtDateTime(r.requested_at), r.requested_name, r.reason && r.kind === "additional" ? `Reason: ${r.reason}` : "", r.decision_note ? `${r.decided_name || "Manager"}: ${r.decision_note}` : ""].filter(Boolean).join(" · "))),
+        h("td", { class: "num" }, `${num(r.qty_issued)} / ${num(r.qty)} ${r.unit}`),
+        h("td", null, reqBadge(r))))))) : h("p", { class: "muted small" }, "No material has been requested from the store yet."),
+    !closedJob ? h("div", { style: { marginTop: ".6rem" } },
+      h("button", { class: "btn small", onclick: () => ask(null) }, "Request material from store"),
+      h("div", { class: "small muted", style: { marginTop: ".3rem" } }, "Material already issued for this job can only be requested again with the manager's approval.")) : null);
+
+  // best sheet sizes for this job
+  const sizeCard = h("div", { class: "card no-print" }, h("h2", null, "Best sheet size"), h("p", { class: "muted small" }, "Working out…"));
+  get(`/api/jobs/${id}/size-suggestions`).then((r) => { clear(sizeCard); add(sizeCard, h("h2", null, "Best sheet size"), sizeSuggestions(r.parts, { money: office })); })
+    .catch(() => sizeCard.remove());
 
   // spec
   const p = w.pages || {};
@@ -284,6 +297,6 @@ export async function renderJobView(view, id) {
         office && job.quotation_id ? h("a", { class: "btn", href: `#/quotes/${job.quotation_id}` }, "Quotation " + (job.quotation_no || "")) : null,
         office ? h("a", { class: "btn", href: `#/sales/new?job=${job.id}` }, "Create invoice") : null,
         state.user.role !== "operator" ? h("button", { class: "btn", onclick: edit }, "Edit details") : null)),
-    h("div", { class: "cols two" }, h("div", null, holdCard, stageCard, specCard), h("div", null, matCard, infoCard, timeline)),
+    h("div", { class: "cols two" }, h("div", null, holdCard, stageCard, specCard), h("div", null, matCard, sizeCard, infoCard, timeline)),
     workOrderSheet(job, office));
 }

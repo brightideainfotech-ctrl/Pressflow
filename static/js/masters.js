@@ -200,7 +200,8 @@ export async function renderRates(view) {
 // ------------------------------------------------------------------ users
 
 const ROLES = [["manager", "Manager: everything"], ["desk", "Front desk: quotations, customers, jobs"],
-  ["superintendent", "Superintendent: jobs and production (no prices)"], ["operator", "Machine operator: move jobs through production (no prices)"]];
+  ["superintendent", "Superintendent: jobs and production (no prices)"], ["operator", "Machine operator: move jobs through production (no prices)"],
+  ["storekeeper", "Store keeper: issues paper and material against job requests (no prices)"]];
 
 export async function renderUsers(view) {
   const body = h("div", { class: "tablewrap" });

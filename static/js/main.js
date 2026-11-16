@@ -7,6 +7,7 @@ import { renderMonitor } from "./monitor.js";
 import { renderParties, renderPartyStatement } from "./parties.js";
 import { renderInvoiceList, renderInvoiceEditor, renderInvoiceView, renderPayments } from "./invoices.js";
 import { renderReports } from "./reports.js";
+import { renderStore } from "./store.js";
 import { renderCustomers, renderRates, renderUsers, renderSettings } from "./masters.js";
 
 const app = document.getElementById("app");
@@ -20,7 +21,8 @@ const NAV = [
   ["Production jobs", "#/jobs", "jobs", null, "▤"],
   ["Production line", "#/line", "line", null, "⇢"],
   ["Team monitor", "#/monitor", "monitor", ["manager"], "◉"],
-  ["Items & stock", "#/stock", "stock", ["manager", "desk", "superintendent", "operator"], "▥"],
+  ["Store requests", "#/store", "store", null, "⛁"],
+  ["Items & stock", "#/stock", "stock", null, "▥"],
   ["ACCOUNTS"],
   ["Parties", "#/parties", "parties", OFFICE, "☺"],
   ["Sales", "#/sales", "sales", OFFICE, "↗"],
@@ -43,6 +45,7 @@ const ROUTES = [
   { rx: /^\/line$/, fn: (v) => renderJobs(v, "board"), nav: "line" },
   { rx: /^\/jobs\/(\d+)$/, fn: (v, id) => renderJobView(v, Number(id)), nav: "jobs" },
   { rx: /^\/monitor$/, fn: renderMonitor, nav: "monitor", roles: ["manager"] },
+  { rx: /^\/store$/, fn: renderStore, nav: "store" },
   { rx: /^\/stock$/, fn: renderInventory, nav: "stock" },
   { rx: /^\/parties$/, fn: renderParties, nav: "parties", roles: OFFICE },
   { rx: /^\/parties\/(\d+)$/, fn: (v, id) => renderPartyStatement(v, Number(id)), nav: "parties", roles: OFFICE },
@@ -154,6 +157,7 @@ async function route() {
   if (!state.user) return;
   let path = location.hash.slice(1) || "/";
   if (path === "/" && state.user.role === "operator") path = "/line";
+  if (path === "/" && state.user.role === "storekeeper") path = "/store";
   path = path.split("?")[0].replace(/\/+$/, "") || "/";
   const view = setMain();
   let match = null;
@@ -234,6 +238,10 @@ async function renderDashboard(view) {
     stat("Sales this month", money0(d.accounts.sales_month), "Invoiced incl. GST", false, "#/sales", "#8ca5ff"),
     stat("Purchases this month", money0(d.accounts.purchases_month), "Billed incl. GST", false, "#/purchases", "#a58bf0"));
   if (isManager()) stats.push(stat("Not assigned", num(d.unassigned), d.unassigned ? "Give these to someone" : "Everything has an owner", d.unassigned > 0, "#/monitor", "#a58bf0"));
+  if (d.store && (d.store.to_issue || d.store.awaiting_approval)) stats.push(
+    stat("Material requests", num(isManager() ? d.store.awaiting_approval + d.store.to_issue : d.store.to_issue),
+      isManager() && d.store.awaiting_approval ? `${d.store.awaiting_approval} need your approval` : `${d.store.to_issue} waiting for the store`,
+      isManager() && d.store.awaiting_approval > 0, "#/store", "#e0a526"));
   if (d.low_stock) stats.push(stat("Low stock", num(d.low_stock.length), d.low_stock.length ? d.low_stock.slice(0, 2).map((x) => x.name).join(", ") : "All above warning level", d.low_stock.length > 0, "#/stock", "#c24141"));
   add(view, h("div", { class: "stats" }, stats));
   if (d.my_jobs.length) add(view, h("div", { class: "card" }, h("h2", null, `My jobs (${d.my_jobs.length})`),
