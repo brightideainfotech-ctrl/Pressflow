@@ -371,3 +371,26 @@ class InchToCmMigrationTests(unittest.TestCase):
             self.assertEqual(json.loads(q["spec_json"])["size_w"], 14.81)
             self.assertEqual(json.loads(q["result_json"])["unit"], "in")  # stored result stays labelled as inches
             conn.close()
+
+
+class SheetSizeMasterTests(ApiTests):
+    def test_seeded_and_bootstrap(self):
+        _, b = self.call("GET", "/api/bootstrap", token=self.boss())
+        sizes = b["masters"]["sizes"]
+        a4 = next(x for x in sizes if x["name"] == "A4")
+        self.assertEqual((a4["width_cm"], a4["height_cm"]), (21, 29.7))
+
+    def test_add_edit_delete_custom(self):
+        t = self.boss()
+        code, s = self.call("POST", "/api/sizes", {"name": "Annual report", "width_cm": 23.5, "height_cm": 30}, t)
+        self.assertEqual(code, 201)
+        code, _ = self.call("POST", "/api/sizes", {"name": "annual report", "width_cm": 1, "height_cm": 1}, t)
+        self.assertEqual(code, 409)  # names are unique, case-insensitive
+        code, _ = self.call("POST", "/api/sizes", {"name": "Bad", "width_cm": 0, "height_cm": 5}, t)
+        self.assertEqual(code, 422)
+        code, u = self.call("PUT", f"/api/sizes/{s['id']}", {"height_cm": 31}, t)
+        self.assertEqual(u["height_cm"], 31)
+        code, _ = self.call("DELETE", f"/api/sizes/{s['id']}", None, t)
+        self.assertEqual(code, 200)
+        _, lst = self.call("GET", "/api/sizes", token=t)
+        self.assertNotIn("Annual report", [x["name"] for x in lst])

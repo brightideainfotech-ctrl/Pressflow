@@ -92,6 +92,14 @@ CREATE TABLE IF NOT EXISTS machines(
   active INTEGER NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS sheet_sizes(
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  width_cm REAL NOT NULL,
+  height_cm REAL NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS plate_types(
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
@@ -382,6 +390,14 @@ SAMPLE_PAPERS = [
     ("Copier 75 gsm A4", 75, 21, 29.7, 280),
     ("Copier 75 gsm A3", 75, 29.7, 42, 560),
 ]
+STANDARD_SIZES = [
+    ("A0", 84.1, 118.9), ("A1", 59.4, 84.1), ("A2", 42, 59.4), ("A3", 29.7, 42), ("A4", 21, 29.7),
+    ("A5", 14.8, 21), ("A6", 10.5, 14.8), ("A7", 7.4, 10.5),
+    ("B3", 35.3, 50), ("B4", 25, 35.3), ("B5", 17.6, 25),
+    ("Letter", 21.6, 27.9), ("Legal", 21.6, 35.6), ("Tabloid / Ledger", 27.9, 43.2), ("Executive", 18.4, 26.7),
+    ("Foolscap", 21.6, 34.3), ("DL envelope", 9.9, 21), ("Visiting card", 9, 5.5),
+    ("Demy", 45.7, 58.4), ("Demy 1/8", 14, 21.6), ("Double Demy", 58.4, 91.4), ("Crown", 38.1, 50.8), ("Royal", 50.8, 63.5),
+]
 SAMPLE_PLATES = [("Polymaster", 120), ("Laser plate", 60), ("Aluminium CTP", 350)]
 SAMPLE_MACHINES = [
     # name, kind, rate/1000, per_color, setup/plate, min_charge, makeready sheets, needs_plate, max_colors
@@ -450,6 +466,9 @@ def init_db(path: str | None = None) -> None:
     try:
         conn.executescript(SCHEMA)
         migrate(conn)
+        if not conn.execute("SELECT 1 FROM meta WHERE key='sizes_seeded'").fetchone():
+            conn.executemany("INSERT OR IGNORE INTO sheet_sizes(name,width_cm,height_cm) VALUES(?,?,?)", STANDARD_SIZES)
+            conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('sizes_seeded','1')")
         seeded = conn.execute("SELECT value FROM meta WHERE key='seeded'").fetchone()
         if not seeded:
             for k, v in DEFAULT_SETTINGS.items():

@@ -291,6 +291,7 @@ def bootstrap(c: Ctx):
             "papers": rows(c.conn, "SELECT * FROM papers WHERE active=1 ORDER BY name"),
             "machines": rows(c.conn, "SELECT * FROM machines WHERE active=1 ORDER BY name"),
             "plates": rows(c.conn, "SELECT * FROM plate_types WHERE active=1 ORDER BY name"),
+            "sizes": rows(c.conn, "SELECT * FROM sheet_sizes WHERE active=1 ORDER BY width_cm*height_cm, name"),
             "finishing": rows(c.conn, "SELECT * FROM finishing WHERE active=1 ORDER BY group_name, name"),
         }
     return out
@@ -310,6 +311,8 @@ MASTERS = {
         ("max_colors", "int", False), ("active", "bool", False, 1)]),
     "plates": ("plate_types", "name", OFFICE, MANAGER, [
         ("name", "str", True), ("rate", "float", True), ("active", "bool", False, 1)]),
+    "sizes": ("sheet_sizes", "name", OFFICE, OFFICE, [
+        ("name", "str", True), ("width_cm", "float", True), ("height_cm", "float", True), ("active", "bool", False, 1)]),
     "finishing": ("finishing", "group_name, name", OFFICE, MANAGER, [
         ("name", "str", True), ("group_name", "str", False, "Finishing"),
         ("basis", "choice:per_copy,per_1000,per_sqft,per_unit,job,per_1000_sheets,per_1000_leaves", True),
@@ -336,7 +339,12 @@ def _check_paper(v: dict):
         raise ApiError(422, "Enter the rate per ream")
 
 
-CHECKS = {"papers": _check_paper}
+def _check_size(v: dict):
+    if not ((v.get("width_cm") or 0) > 0 and (v.get("height_cm") or 0) > 0):
+        raise ApiError(422, "Enter the width and the height in cm")
+
+
+CHECKS = {"papers": _check_paper, "sizes": _check_size}
 
 
 @route("GET", r"/api/papers/(\d+)/sizes", roles=OFFICE)
@@ -413,6 +421,9 @@ def _register_master(name, table, order, read_roles, write_roles, fields):
             if not used:
                 c.conn.execute("DELETE FROM customers WHERE id=?", (rid,))
                 return {"deleted": True}
+        if name == "sizes":  # nothing refers to a size by id, so it can simply go
+            c.conn.execute("DELETE FROM sheet_sizes WHERE id=?", (rid,))
+            return {"deleted": True}
         # Rates may be referenced by saved quotations, so they are switched off, not removed.
         c.conn.execute(f"UPDATE {table} SET active=0 WHERE id=?", (rid,))
         return {"deleted": False, "deactivated": True}

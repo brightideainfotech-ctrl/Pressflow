@@ -1,4 +1,5 @@
 import { state, get, post, put, del, loadBootstrap } from "./api.js";
+import { sizeList, sizeLabel } from "./sizes.js";
 import { h, add, clear, badge, field, input, select, formModal, toast, fail, money, money0, num, fmtDate, todayStr,
          debounce, confirmBox, emptyState, logoImg, printHeader } from "./ui.js";
 
@@ -6,9 +7,8 @@ const COLOR_MODES = [["multi", "Multi-colour (4)"], ["two", "2 colour"], ["singl
 const COLOR_TEXT = Object.fromEntries(COLOR_MODES);
 const kgText = (kg) => (kg < 1 ? `${+(kg * 1000).toFixed(2)} g` : `${+kg.toFixed(3)} kg`);
 const PARTS = [["text", "Text / inside pages"], ["cover", "Cover"], ["end_paper", "End paper"], ["insert", "Insert / fold-out sheet"]];
-const PRESETS = [["", "Custom size…"], ["29.7x42", "A3 (29.7 × 42 cm)"], ["21x29.7", "A4 (21 × 29.7 cm)"],
-  ["14.8x21", "A5 (14.8 × 21 cm)"], ["10.5x14.8", "A6 (10.5 × 14.8 cm)"], ["9.9x21", "DL (9.9 × 21 cm)"],
-  ["21.6x27.9", "Letter (21.6 × 27.9 cm)"], ["9x5.5", "Visiting card (9 × 5.5 cm)"]];
+// Size presets come from the Sheet size master (Rates > Sheet sizes).
+const presets = () => [["", "Custom size…"], ...sizeList().map(([n, w, hh]) => [`${w}x${hh}`, sizeLabel([n, w, hh])])];
 const BASIS = { per_copy: "per copy", per_1000: "per 1000", per_sqft: "per sq ft", per_unit: "per unit", job: "per job", per_1000_sheets: "per 1000 sheets", per_1000_leaves: "per 1000 leaves" };
 const EDITABLE = ["draft", "sent", "rejected"];
 
@@ -254,12 +254,8 @@ export async function renderQuoteEditor(view, id) {
   const opts = (list, label = (x) => x.name) => list.map((x) => [x.id, label(x)]);
 
   // ---- customer & job
-  const custSelect = h("select", { "aria-label": "Customer" });
-  const fillCustomers = () => {
-    clear(custSelect);
-    add(custSelect, h("option", { value: "" }, "Choose customer…"), customers.map((c) => h("option", { value: c.id }, c.name)));
-    custSelect.value = S.customer_id;
-  };
+  const custSelect = select([], "", { "aria-label": "Customer", searchable: true });
+  const fillCustomers = () => custSelect.setOptions([["", "Choose customer…"], ...customers.map((c) => [c.id, c.name])], S.customer_id);
   fillCustomers();
   custSelect.addEventListener("change", () => { S.customer_id = custSelect.value; });
   const newCustomer = () => formModal({
@@ -269,7 +265,7 @@ export async function renderQuoteEditor(view, id) {
     onSubmit: async (v) => { const c = await post("/api/customers", v); customers.push(c); S.customer_id = String(c.id); fillCustomers(); },
   });
 
-  const preset = select(PRESETS, "", { "aria-label": "Size preset" });
+  const preset = select(presets(), "", { "aria-label": "Size preset", searchable: true });
   const wIn = bind(S.spec, "size_w", input("number", S.spec.size_w, { step: "0.1", min: "0.3" }));
   const hIn = bind(S.spec, "size_h", input("number", S.spec.size_h, { step: "0.1", min: "0.3" }));
   preset.addEventListener("change", () => {

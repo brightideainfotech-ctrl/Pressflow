@@ -113,3 +113,9 @@ old result, marked as inches, until recalculated. Lamination-type rates stay "pe
 
 Packing items are finishing-master items in the group "Packing". On a quotation, "copies per pack" turns a per-unit item
 (carton, bundle) into a pack count. Packing cost is part of the job cost before mark-up and GST.
+
+## Sheet size master and searchable pickers
+
+* **Rate master → Sheet sizes** holds the list of named sizes (width × height in cm). Standard sizes (A0–A7, B3–B5, Letter, Legal, Demy, Crown, Royal, …) are loaded once; add your own custom sizes, edit or delete any of them.
+* The master feeds the **Size preset** on quotations, the **Sheet size** on a paper, and the size rows of a paper's own weight table.
+* Any dropdown with more than 8 choices (size presets, customers, papers, parties, stock items, states…) is a **searchable picker**: click it and type part of a name (for example `demy 1/8` or `annual`); use Up/Down and Enter, or click.

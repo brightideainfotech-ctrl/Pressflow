@@ -1,7 +1,8 @@
 // Standard paper sizes (cm), shared by the Rate master screens. Anything else is entered as a custom size.
+import { state } from "./api.js";
 import { h, input, select } from "./ui.js";
 
-export const PAPER_SIZES = [
+const FALLBACK_SIZES = [
   ["A0", 84.1, 118.9], ["A1", 59.4, 84.1], ["A2", 42, 59.4], ["A3", 29.7, 42], ["A4", 21, 29.7],
   ["A5", 14.8, 21], ["A6", 10.5, 14.8], ["A7", 7.4, 10.5],
   ["B3", 35.3, 50], ["B4", 25, 35.3], ["B5", 17.6, 25],
@@ -10,24 +11,27 @@ export const PAPER_SIZES = [
 ];
 const TOL = 0.1;
 
+/** The Sheet size master ([name, width, height]); built-in list until the master has loaded. */
+export const sizeList = () => (state.masters?.sizes?.length ? state.masters.sizes.map((r) => [r.name, r.width_cm, r.height_cm]) : FALLBACK_SIZES);
+
 export const sizeLabel = ([n, w, hh]) => `${n} (${w} × ${hh} cm)`;
 
 /** Name of the standard size matching w x h (either way round), or "" */
 export function sizeNameFor(w, hh) {
-  const hit = PAPER_SIZES.find(([, a, b]) => (Math.abs(a - w) <= TOL && Math.abs(b - hh) <= TOL) || (Math.abs(a - hh) <= TOL && Math.abs(b - w) <= TOL));
+  const hit = sizeList().find(([, a, b]) => (Math.abs(a - w) <= TOL && Math.abs(b - hh) <= TOL) || (Math.abs(a - hh) <= TOL && Math.abs(b - w) <= TOL));
   return hit ? hit[0] : "";
 }
 
-const presetOptions = (blank) => [["", blank], ...PAPER_SIZES.map((s) => [s[0], sizeLabel(s)]), ["custom", "Custom size…"]];
+const presetOptions = (blank) => [["", blank], ...sizeList().map((s) => [s[0], sizeLabel(s)]), ["custom", "Custom size…"]];
 
 /** Sheet size field: a standard size or custom width x height. getValue() -> {width_cm, height_cm} */
 export function sheetSizeField(values) {
   const w = input("number", values.width_cm > 0 ? values.width_cm : "", { step: "0.01", min: "0", placeholder: "Width (cm)", "aria-label": "Sheet width" });
   const hh = input("number", values.height_cm > 0 ? values.height_cm : "", { step: "0.01", min: "0", placeholder: "Height (cm)", "aria-label": "Sheet height" });
   const known = values.width_cm > 0 ? sizeNameFor(values.width_cm, values.height_cm) : "";
-  const sel = select(presetOptions("No fixed size (reel / kg paper)"), known || (values.width_cm > 0 ? "custom" : ""), { "aria-label": "Sheet size" });
+  const sel = select(presetOptions("No fixed size (reel / kg paper)"), known || (values.width_cm > 0 ? "custom" : ""), { "aria-label": "Sheet size", searchable: true });
   sel.addEventListener("change", () => {
-    const p = PAPER_SIZES.find((s) => s[0] === sel.value);
+    const p = sizeList().find((s) => s[0] === sel.value);
     if (p) { w.value = p[1]; hh.value = p[2]; } else if (sel.value === "") { w.value = ""; hh.value = ""; }
     w.disabled = hh.disabled = !!p;
   });
@@ -47,14 +51,14 @@ export function weightsEditor(initial) {
       h("thead", null, h("tr", null, ["Paper size", "Width (cm)", "Height (cm)", "kg per 100 sheets", ""].map((t) => h("th", null, t)))),
       h("tbody", null, rows.map((r, i) => {
         const std = r.width_cm > 0 ? sizeNameFor(r.width_cm, r.height_cm) : "";
-        const sel = select(presetOptions("Choose a size…"), std || (r.width_cm > 0 || r.custom ? "custom" : ""), { "aria-label": "Paper size" });
+        const sel = select(presetOptions("Choose a size…"), std || (r.width_cm > 0 || r.custom ? "custom" : ""), { "aria-label": "Paper size", searchable: true });
         const w = input("number", r.width_cm || "", { step: "any", min: "0", placeholder: "Width (cm)", "aria-label": "Width" });
         const hh = input("number", r.height_cm || "", { step: "any", min: "0", placeholder: "Height (cm)", "aria-label": "Height" });
         const kg = input("number", r.kg_per_100 || "", { step: "any", min: "0", placeholder: "kg", "aria-label": "kg per 100 sheets" });
         w.style.width = hh.style.width = "5.5rem"; kg.style.width = "6rem";
         w.disabled = hh.disabled = !!std;
         sel.addEventListener("change", () => {
-          const p = PAPER_SIZES.find((s) => s[0] === sel.value);
+          const p = sizeList().find((s) => s[0] === sel.value);
           if (p) { r.name = p[0]; r.width_cm = p[1]; r.height_cm = p[2]; r.custom = false; }
           else if (sel.value === "custom") { r.name = "Custom"; r.custom = true; }
           else { r.name = ""; r.width_cm = ""; r.height_cm = ""; r.custom = false; }

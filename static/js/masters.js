@@ -135,6 +135,15 @@ const RATE_TABS = [
       return async (saved) => { if (sizes && (sizes.length || saved)) await put(`/api/papers/${saved.id}/sizes`, { sizes }); };
     },
   })],
+  ["Sheet sizes", () => crud({
+    endpoint: "/api/sizes", noun: "sheet size", afterChange: refresh,
+    columns: [{ label: "Size name", get: (r) => r.name }, { label: "Width (cm)", num: true, get: (r) => r.width_cm },
+      { label: "Height (cm)", num: true, get: (r) => r.height_cm }],
+    fields: [{ key: "name", label: "Size name", required: true, help: "e.g. A4, Demy 1/8, or your own such as ‘Annual report cover’" },
+      { key: "width_cm", label: "Width (cm)", type: "number", step: "0.01", min: "0", required: true },
+      { key: "height_cm", label: "Height (cm)", type: "number", step: "0.01", min: "0", required: true }, active],
+    defaults: { active: true },
+  })],
   ["Machines", () => crud({
     endpoint: "/api/machines", noun: "machine", afterChange: refresh,
     columns: [{ label: "Machine", get: (r) => r.name }, { label: "Type", get: (r) => (KINDS.find((k) => k[0] === r.kind) || [0, r.kind])[1] },
